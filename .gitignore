@@ -1,0 +1,12 @@
+# Sistema
+.DS_Store
+Thumbs.db
+*.log
+
+# Entornos y secretos (nunca en el repo)
+.env
+.env*.local
+
+# Basura de editores / SO
+.idea/
+.vscode/

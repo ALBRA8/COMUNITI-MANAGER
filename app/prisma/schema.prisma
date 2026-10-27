@@ -1,0 +1,285 @@
+// Social Autopilot AI — Arnés de community management
+// Memoria persistente: sobrevive a reinicios, aislada por marca.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./db/harness.db"
+}
+
+// ─── Marcas y cuentas ─────────────────────────────────────────────
+
+model Brand {
+  id               String   @id @default(cuid())
+  name             String   @unique
+  identity         String   // identidad de marca
+  products         String   @default("")
+  audience         String   @default("")
+  tone             String   @default("")
+  vocabulary       String   @default("") // vocabulario preferido (separado por comas)
+  forbiddenWords   String   @default("") // palabras prohibidas (separado por comas)
+  policies         String   @default("") // políticas comerciales
+  faqs             String   @default("[]") // JSON [{q,a}]
+  approvedExamples String   @default("[]") // JSON [{network,text}]
+  supportInfo      String   @default("")
+  budgetDaily      Float    @default(0)
+  maxPostsPerDay   Int      @default(3)
+  allowedHours     String   @default("08-20")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  drafts      ContentDraft[]
+  publications Publication[]
+  comments    Comment[]
+  tasks       Task[]
+  evidences   Evidence[]
+  metrics     MetricSnapshot[]
+  experiments Experiment[]
+  accounts    SocialAccount[]
+}
+
+model SocialAccount {
+  id                String  @id @default(cuid())
+  brandId           String
+  network           String // instagram | facebook | tiktok | x | linkedin | youtube | threads | whatsapp
+  handle            String
+  status            String  @default("AWAITING_CREDENTIALS") // CONNECTED | AWAITING_CREDENTIALS | DISABLED
+  providerAccountId String  @default("")
+  brand             Brand   @relation(fields: [brandId], references: [id])
+
+  @@unique([brandId, network, handle])
+}
+
+// ─── Contenido y publicaciones ────────────────────────────────────
+
+model ContentDraft {
+  id         String   @id @default(cuid())
+  brandId    String
+  objective  String
+  brief      String   @default("") // brief creativo
+  status     String   @default("DRAFT") // DRAFT | IN_REVIEW | APPROVED | SCHEDULED | PUBLISHED | REJECTED | FAILED
+  version    Int      @default(1)
+  theme      String   @default("") // pilar de contenido
+  sourceTask String?  // taskId que lo originó
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  brand        Brand     @relation(fields: [brandId], references: [id])
+  versions     PostVersion[]
+  publications Publication[]
+}
+
+model PostVersion {
+  id       String @id @default(cuid())
+  draftId  String
+  network  String
+  text     String
+  mediaJson String @default("[]") // [{type,url,alt,source}]
+  specCheck String @default("{}") // validación de specs por red {ok, issues[]}
+  draft    ContentDraft @relation(fields: [draftId], references: [id])
+
+  @@unique([draftId, network, text])
+}
+
+model Publication {
+  id             String    @id @default(cuid())
+  brandId        String
+  draftId        String
+  network        String
+  scheduledAt    DateTime?
+  publishedAt    DateTime?
+  status         String    @default("PENDING") // PENDING | SCHEDULED | PUBLISHING | PUBLISHED | FAILED | CANCELLED | AWAITING_CONNECTOR
+  externalId     String?   // id en la red / proveedor
+  verifyStatus   String    @default("UNVERIFIED") // UNVERIFIED | VERIFIED | NOT_FOUND
+  idempotencyKey String    @unique
+  errorDetail    String    @default("")
+  evidenceId     String?
+  createdAt      DateTime  @default(now())
+
+  brand Brand        @relation(fields: [brandId], references: [id])
+  draft ContentDraft @relation(fields: [draftId], references: [id])
+}
+
+// ─── Comunidad ────────────────────────────────────────────────────
+
+model Comment {
+  id             String   @id @default(cuid())
+  brandId        String
+  network        String
+  externalId     String   @default("")
+  author         String   @default("")
+  text           String
+  kind           String   @default("COMMENT") // COMMENT | MESSAGE
+  classification String   @default("PENDING") // FAQ | PRODUCT_INQUIRY | SALES_REQUEST | LEAD | SUPPORT | COMPLAINT | REFUND | SPAM | FRAUD | ABUSE | CRISIS | HUMAN_REQUIRED | PENDING
+  sentiment      String   @default("NEUTRAL") // POSITIVE | NEUTRAL | NEGATIVE
+  risk           String   @default("LOW") // LOW | MEDIUM | HIGH | CRITICAL
+  status         String   @default("PENDING") // PENDING | CLASSIFIED | REPLIED | ESCALATED | MODERATED | IGNORED
+  suggestedReply String   @default("")
+  replyText      String   @default("")
+  repliedAt      DateTime?
+  evidence       String   @default("")
+  createdAt      DateTime @default(now())
+
+  brand Brand @relation(fields: [brandId], references: [id])
+
+  @@unique([brandId, network, externalId, kind])
+}
+
+// ─── Aprobaciones ─────────────────────────────────────────────────
+
+model Approval {
+  id         String    @id @default(cuid())
+  brandId    String
+  targetType String // PUBLICATION | REPLY | MODERATION | CAMPAIGN
+  targetId   String
+  summary    String
+  risk       String    @default("MEDIUM") // LOW | MEDIUM | HIGH | CRITICAL
+  status     String    @default("PENDING") // PENDING | APPROVED | REJECTED
+  requestedBy String   @default("system")
+  decidedBy  String?
+  reason     String    @default("")
+  decidedAt  DateTime?
+  createdAt  DateTime  @default(now())
+}
+
+// ─── Orquestador y tareas ─────────────────────────────────────────
+
+model Task {
+  id             String    @id @default(cuid())
+  brandId        String
+  type           String // RESEARCH | ANALYZE | PLAN | CREATE | VALIDATE | PUBLISH | VERIFY | ENGAGE | MEASURE | LEARN | OPTIMIZE | REPLY | MODERATE
+  agent          String // strategy | researcher | trends | planner | writer | creative | adapter | publisher | community | moderator | capture | analyst | optimizer | supervisor
+  status         String    @default("PENDING") // PENDING | RUNNING | WAITING_APPROVAL | COMPLETED | FAILED | CANCELLED | PAUSED
+  phase          String    @default("") // fase del ciclo autónomo
+  inputJson      String    @default("{}")
+  outputJson     String    @default("{}")
+  attempts       Int       @default(0)
+  maxAttempts    Int       @default(3)
+  nextRetryAt    DateTime?
+  idempotencyKey String?   @unique
+  errorDetail    String    @default("")
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  brand  Brand      @relation(fields: [brandId], references: [id])
+  events TaskEvent[]
+}
+
+model TaskEvent {
+  id        String   @id @default(cuid())
+  taskId    String
+  phase     String
+  message   String
+  dataJson  String   @default("{}")
+  createdAt DateTime @default(now())
+
+  task Task @relation(fields: [taskId], references: [id])
+}
+
+// ─── Herramientas y llamadas ──────────────────────────────────────
+
+model ToolRecord {
+  id           String  @id @default(cuid())
+  key          String  @unique // postgale.publish | scrapecreators.research | krea.generate...
+  provider     String
+  category     String // PUBLISH | RESEARCH | CREATIVITY | ECOSYSTEM | ANALYTICS
+  description  String
+  contracts    String  @default("[]") // contratos internos soportados JSON[]
+  status       String  @default("AWAITING_CREDENTIALS") // CONNECTED | AWAITING_CREDENTIALS | UNAVAILABLE | DISABLED
+  capabilities String  @default("[]")
+  rateLimit    String  @default("")
+  costNote     String  @default("")
+  lastResult   String  @default("") // OK | ERROR | ""
+  lastCheckedAt DateTime?
+}
+
+model ToolCall {
+  id         String   @id @default(cuid())
+  toolKey    String
+  contract   String
+  reqJson    String   @default("{}")
+  resJson    String   @default("{}")
+  outcome    String // OK | ERROR | CAPACITY_UNAVAILABLE
+  durationMs Int      @default(0)
+  createdAt  DateTime @default(now())
+}
+
+// ─── Evidencias, métricas, experimentos ───────────────────────────
+
+model Evidence {
+  id         String   @id @default(cuid())
+  brandId    String
+  source     String // scrapecreators | chismoso | web | manual
+  url        String   @default("")
+  claim      String // qué afirma esta evidencia
+  payloadJson String  @default("{}")
+  checksum   String   @default("")
+  capturedAt DateTime @default(now())
+
+  brand Brand @relation(fields: [brandId], references: [id])
+}
+
+model MetricSnapshot {
+  id          String   @id @default(cuid())
+  brandId     String
+  network     String
+  externalId  String   @default("")
+  date        DateTime
+  metricsJson String   @default("{}") // {impressions, engagement, clicks, followers...}
+  verified    Boolean  @default(false) // true = datos del proveedor; false = estimación
+  note        String   @default("")
+
+  brand Brand @relation(fields: [brandId], references: [id])
+
+  @@unique([brandId, network, externalId, date])
+}
+
+model Experiment {
+  id           String   @id @default(cuid())
+  brandId      String
+  hypothesis   String
+  variantA     String
+  variantB     String
+  resultJson   String   @default("{}")
+  conclusion   String   @default("")
+  status       String   @default("RUNNING") // RUNNING | CONCLUDED
+  createdAt    DateTime @default(now())
+
+  brand Brand @relation(fields: [brandId], references: [id])
+}
+
+// ─── Errores y auditoría ──────────────────────────────────────────
+
+model ErrorLog {
+  id         String   @id @default(cuid())
+  brandId    String?
+  source     String
+  severity   String   @default("ERROR") // WARNING | ERROR | CRITICAL
+  message    String
+  detailJson String   @default("{}")
+  recovery   String   @default("") // acción de recuperación sugerida
+  resolved   Boolean  @default(false)
+  createdAt  DateTime @default(now())
+}
+
+model AuditEntry {
+  id         String   @id @default(cuid())
+  actor      String // agent:<name> | human | system
+  action     String
+  targetType String
+  targetId   String   @default("")
+  allowed    Boolean  @default(true)
+  reason     String   @default("")
+  dataJson   String   @default("{}")
+  createdAt  DateTime @default(now())
+}
+
+// ─── Configuración ────────────────────────────────────────────────
+
+model Setting {
+  key   String @id
+  value String
+}

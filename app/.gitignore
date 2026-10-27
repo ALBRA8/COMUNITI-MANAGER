@@ -1,0 +1,31 @@
+# Dependencias
+node_modules/
+.pnp
+.pnp.*
+
+# Next.js
+.next/
+out/
+build/
+
+# Entorno
+.env
+.env*.local
+
+# Base de datos local (SQLite)
+prisma/db/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# Sistema / editor
+.DS_Store
+Thumbs.db
+*.log
+.idea/
+.vscode/
