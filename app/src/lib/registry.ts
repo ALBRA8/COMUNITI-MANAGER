@@ -132,6 +132,16 @@ export const TOOLS: ToolDefinition[] = [
     envKeys: ['ALBRA_SEED_URL', 'ALBRA_SEED_TOKEN'],
     capabilities: ['health', 'readiness', 'execution'],
   },
+  {
+    key: 'fbgroups.worker',
+    provider: 'FB-GROUPS (módulo propio del chaleco)',
+    category: 'PUBLISH',
+    description: 'Publicación en grupos de Facebook vía worker propio con Chrome real y sesión del usuario (PC o VPS). Única vía viable: la API de Grupos de Meta fue eliminada el 22/04/2024. Anti-ban balanceado, HITL del chaleco, riesgo de cuenta declarado en la FICHA del módulo.',
+    contracts: ['fb_groups_post', 'fb_groups_sync', 'fb_groups_report'],
+    envKeys: [], // el estado depende de workers registrados en BD, no de variables de entorno
+    capabilities: ['publicar-en-grupos', 'perfil-personal', 'pagina-en-grupo', 'spintax-por-grupo', 'warmup', 'primer-comentario', 'pausa-defensiva'],
+    costNote: 'Sin coste externo; riesgo de restricción asumido por el dueño de la cuenta',
+  },
 ];
 
 function envAvailable(envKeys: string[]): boolean {
@@ -146,7 +156,10 @@ export function computeStatus(tool: ToolDefinition): ToolStatus {
 /** Sincroniza el registro en BD (idempotente). */
 export async function syncRegistry() {
   for (const tool of TOOLS) {
-    const status = computeStatus(tool);
+    // Estado honesto del módulo FB-GROUPS: CONNECTED solo con worker registrado y con sesión.
+    const status = tool.key === 'fbgroups.worker'
+      ? (await db.fbWorker.count()) > 0 ? 'CONNECTED' : 'AWAITING_CREDENTIALS'
+      : computeStatus(tool);
     await db.toolRecord.upsert({
       where: { key: tool.key },
       create: {

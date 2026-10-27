@@ -12,7 +12,7 @@ import {
   LayoutDashboard, Users, CalendarDays, Inbox, BadgeCheck, PenTool,
   Image as ImageIcon, Search, BarChart3, LineChart, Bot, Wrench,
   Workflow, BookMarked, History, AlertTriangle, Wallet, ShieldCheck,
-  Pause, Play, Radar,
+  Pause, Play, Radar, UsersRound,
 } from 'lucide-react';
 
 import DashboardSection from '@/components/sections/dashboard';
@@ -22,6 +22,7 @@ import { CreationSection, MediaSection } from '@/components/sections/creation';
 import { ResearchSection, CompetitorsSection, AnalyticsSection } from '@/components/sections/research-analytics';
 import { AgentsSection, ToolsSection, AutomationsSection } from '@/components/sections/ops';
 import { MemorySection, HistorySection, ErrorsSection, CostsSection, SecuritySection } from '@/components/sections/memory-history';
+import { FbGroupsSection } from '@/components/sections/fb-groups';
 
 export interface HarnessState {
   status: string;
@@ -53,6 +54,7 @@ const NAV = [
   { id: 'agents', label: 'Agentes', icon: Bot, group: 'Operación' },
   { id: 'tools', label: 'Herramientas e integraciones', icon: Wrench, group: 'Operación' },
   { id: 'automations', label: 'Automatizaciones', icon: Workflow, group: 'Operación' },
+  { id: 'fbgroups', label: 'Grupos de Facebook', icon: UsersRound, group: 'Operación' },
   { id: 'memory', label: 'Memoria de marca', icon: BookMarked, group: 'Gobierno' },
   { id: 'history', label: 'Historial de ejecución', icon: History, group: 'Gobierno' },
   { id: 'errors', label: 'Registro de errores', icon: AlertTriangle, group: 'Gobierno' },
@@ -254,6 +256,7 @@ export default function Page() {
             : active === 'errors' ? <ErrorsSection harness={harness} brandId={brandId} refresh={refresh} />
             : active === 'costs' ? <CostsSection harness={harness} brandId={brandId} refresh={refresh} />
             : active === 'security' ? <SecuritySection harness={harness} brandId={brandId} refresh={refresh} />
+            : active === 'fbgroups' ? <FbGroupsSection harness={harness} brandId={brandId} refresh={refresh} />
             : null}
           </div>
         </main>

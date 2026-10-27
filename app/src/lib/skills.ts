@@ -105,6 +105,30 @@ Distribuir el contenido semanal de una marca sin saturar y cubriendo los pilares
 ## Criterio de finalización
 El plan semanal queda en el calendario con estados y la marca tiene borradores en VALIDATE antes del primer día.`,
   },
+  {
+    key: 'publicar-en-grupos-fb',
+    name: 'Publicación segura en grupos de Facebook',
+    category: 'GROWTH',
+    body: `# Publicación segura en grupos de Facebook (módulo FB-GROUPS)
+
+## Objetivo
+Distribuir contenido aprobado en grupos propios del usuario a ritmo humano, maximizando alcance y minimizando riesgo de restricción.
+
+## Contexto técnico
+La Graph API oficial de Meta eliminó la publicación en grupos (22/04/2024). La única vía es el navegador con la sesión del usuario (worker FB-GROUPS del chaleco). Automatizar publicación viola los Términos de Meta: el riesgo de la cuenta es del dueño y se declara en la FICHA del módulo.
+
+## Procedimiento
+1. **Fuente del contenido**: siempre un borrador aprobado (APPROVE) o texto del operador. Nunca inventar datos de la marca: usar memoria de marca (tono, vocabulario, prohibidos).
+2. **Objetivos**: grupos donde el usuario es miembro, en colecciones por nicho. Excluir grupos con health score bajo.
+3. **Ventana**: respetar windowStart-windowEnd local y el techo diario con warmup (5/día semana 1, 10/día semana 2, 20/día desde la semana 3).
+4. **Variante por grupo**: spintax determinista por (job, grupo) o reescritura IA del borrador aprobado según nivel de autonomía. Nunca el mismo texto dos veces.
+5. **Primer comentario**: si el post lleva enlace, colocarlo en comentario automático 1-3 min después, no en el cuerpo.
+6. **Evidencia**: cada publicación devuelve URL viva o motivo exacto del fallo. Sin URL no hay éxito.
+7. **Defensa**: ante cualquier advertencia o checkpoint de Facebook, pausa de 12 h de la cuenta y alerta al panel. El grupo que rechaza sale de rotación.
+
+## Criterio de finalización
+Campaña con todos sus jobs en estado terminal, resultados auditados y health scores actualizados.`,
+  },
 ];
 
 /** Siembra la biblioteca inicial una sola vez ( Setting: skills_seeded ). */

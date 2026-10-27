@@ -48,13 +48,29 @@ COMUNITI-MANAGER/
 ├── FICHA.md                 Especificación funcional (fuente única de la construcción)
 ├── docs/
 │   ├── research/REFERENTES_20.md      Informe comparativo de 20 referentes + ALBRA8
+│   ├── research/FB_GROUPS_REFERENTES.md Informe de referentes de grupos de Facebook
 │   ├── architecture/ARCHITECTURE.md   Arquitectura del arnés
 │   ├── architecture/INTEGRATIONS.md   Contratos de integración con el ecosistema
 │   └── capturas/                      Capturas del panel
 ├── especializacion-albra/   Chaleco Python para la semilla ALBRA
 │                            (identidad, tools, skills, workflow, políticas, memoria, prompts)
+├── modulo-fb-groups/        EL PANTALÓN: publicación en grupos de Facebook (ClonaKit)
+│   ├── FICHA.md             Especificación sala limpia del módulo
+│   └── worker/              Chrome que publica: Node + Playwright, portable PC/VPS
 └── app/                     El arnés: panel Next.js 16 + motor TypeScript + Prisma/SQLite
+                             (incluye sección "Grupos de Facebook" y API /api/fb-*)
 ```
+
+## El módulo FB-GROUPS (el pantalón)
+
+La Graph API oficial de Meta **eliminó** la publicación en grupos (22/04/2024).
+`modulo-fb-groups/` es la vía propia y honesta para ese hueco: un worker con
+Chrome real y TU sesión (PC o VPS) que tira de jobs firmados del chaleco,
+publica a ritmo humano (spintax/reescritura IA por grupo, warmup 5→10→20/día,
+corte nocturno, pausa de 12 h ante cualquier desafío) y reporta URL viva o
+motivo exacto. Todo el gobierno (aprobaciones HITL, auditoría, memoria de
+marca, skills) lo aporta el chaleco; el riesgo de cuenta está declarado en su
+FICHA. Ver `modulo-fb-groups/FICHA.md` y `modulo-fb-groups/worker/README.md`.
 
 ## Arranque local
 

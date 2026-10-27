@@ -327,3 +327,99 @@ model Setting {
   key   String @id
   value String
 }
+
+// ─── Módulo FB-GROUPS (pantalón) — FICHA modulo-fb-groups/FICHA.md ──
+
+model FbWorker {
+  id             String    @id @default(cuid())
+  name           String
+  baseUrl        String    @unique // p.ej. http://192.168.1.10:8765
+  mode           String    @default("pc") // pc | vps
+  secret         String    // secreto HMAC por worker (se muestra una vez)
+  status         String    @default("OFFLINE") // OFFLINE | IDLE | RUNNING | AWAITING_SESSION | PAUSED_ANTI_BAN | CHALLENGE_DETECTED
+  lastSeenAt     DateTime?
+  sessionAgeDays Int       @default(30) // antigüedad declarada de la cuenta FB (warmup)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  jobs FbJob[]
+}
+
+model FbGroup {
+  id           String    @id @default(cuid())
+  fbId         String    @unique // identificador normalizado del grupo
+  name         String
+  url          String    @default("")
+  collection   String    @default("general")
+  excluded     Boolean   @default(false) // fuera de rotación
+  lastPostedAt DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  jobs FbJob[]
+}
+
+model FbCampaign {
+  id           String   @id @default(cuid())
+  brandId      String?
+  draftId      String?  // origen opcional en el calendario
+  name         String
+  text         String   // texto base aprobado
+  mode         String   @default("group") // group | profile | page_in_group
+  engine       String   @default("dom") // dom | internal
+  pageName     String   @default("") // si mode=page_in_group
+  firstComment String   @default("")
+  windowStart  Int      @default(7) // hora local inicio ventana de publicación
+  windowEnd    Int      @default(21)
+  status       String   @default("QUEUED") // QUEUED | RUNNING | DONE | PAUSED | CANCELLED
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  jobs FbJob[]
+}
+
+model FbJob {
+  id            String    @id @default(cuid())
+  campaignId    String
+  groupId       String?
+  workerId      String?
+  targetKind    String    @default("group") // group | profile | page_in_group
+  targetName    String    // nombre del grupo o "PERFIL"
+  targetUrl     String    @default("")
+  variant       String    @default("") // texto final tras spintax/IA
+  variantSource String    @default("base") // base | spintax | ai_rewrite
+  status        String    @default("QUEUED") // QUEUED | LEASED | POSTED | FAILED | SKIPPED | PENDING_REVIEW | CANCELLED
+  leaseUntil    DateTime?
+  attempts      Int       @default(0)
+  postUrl       String    @default("")
+  failReason    String    @default("")
+  postedAt      DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  campaign FbCampaign @relation(fields: [campaignId], references: [id])
+  group    FbGroup?   @relation(fields: [groupId], references: [id])
+  worker   FbWorker?  @relation(fields: [workerId], references: [id])
+
+  @@index([status, leaseUntil])
+}
+
+model FbDailyUsage {
+  id       String @id @default(cuid())
+  workerId String
+  day      String // YYYY-MM-DD en zona horaria de la cuenta
+  posts    Int    @default(0)
+  cap      Int    @default(5)
+
+  @@unique([workerId, day])
+}
+
+model FbAlert {
+  id          String    @id @default(cuid())
+  workerId    String?
+  kind        String    // CHALLENGE | WARNING | BLOCKED_GROUP | INFO
+  message     String
+  pausedUntil DateTime?
+  resolved    Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+}

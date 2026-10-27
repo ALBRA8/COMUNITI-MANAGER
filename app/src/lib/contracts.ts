@@ -22,6 +22,9 @@ export const CONTRACTS = [
   'create_lead',
   'record_experiment',
   'generate_performance_report',
+  'fb_groups_post',
+  'fb_groups_sync',
+  'fb_groups_report',
 ] as const;
 export type Contract = (typeof CONTRACTS)[number];
 

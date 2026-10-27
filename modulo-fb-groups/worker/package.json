@@ -1,0 +1,15 @@
+{
+  "name": "fb-groups-worker",
+  "version": "1.0.0",
+  "description": "Worker FB-GROUPS del chaleco COMUNITI-MANAGER: publica en grupos de Facebook a ritmo humano con Chrome real (sesión del usuario). Portable PC/VPS.",
+  "type": "module",
+  "main": "src/server.mjs",
+  "scripts": {
+    "start": "node src/server.mjs",
+    "setup": "npx playwright install chrome"
+  },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "playwright": "^1.49.0"
+  }
+}
