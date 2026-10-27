@@ -85,7 +85,142 @@ function MemoryForm({ brand, refresh }: { brand: NonNullable<HarnessState['brand
           </CardContent>
         </Card>
       </div>
+      <SkillsLibrary brandId={brand.id} />
     </div>
+  );
+}
+
+// ─── Biblioteca de habilidades (SKILL.md) ─────────────────────────
+
+interface SkillRow {
+  id: string; key: string; name: string; category: string; format: string;
+  body: string; version: number; status: string; source: string;
+  brandId: string | null; brand: { id: string; name: string } | null;
+}
+
+const SKILL_CATEGORIES = ['CONTENT', 'ENGAGEMENT', 'ANALYTICS', 'CRISIS', 'GROWTH'];
+const SKILL_CAT_LABEL: Record<string, string> = {
+  CONTENT: 'Contenido', ENGAGEMENT: 'Engagement', ANALYTICS: 'Analítica', CRISIS: 'Crisis', GROWTH: 'Crecimiento',
+};
+
+function SkillsLibrary({ brandId }: { brandId: string }) {
+  const [skills, setSkills] = useState<SkillRow[] | null>(null);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [note, setNote] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState<{ name: string; category: string; body: string } | null>(null);
+  const [editId, setEditId] = useState<string | null>(null);
+
+  const load = async () => {
+    const res = await fetch(`/api/skills?brandId=${encodeURIComponent(brandId)}`);
+    if (res.ok) setSkills(await res.json());
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const res = await fetch(`/api/skills?brandId=${encodeURIComponent(brandId)}`);
+      const data = res.ok ? await res.json() : null;
+      if (!cancelled && data) setSkills(data);
+    })();
+    return () => { cancelled = true; };
+  }, [brandId]);
+
+  const create = async () => {
+    if (!form?.name.trim() || !form.body.trim()) { setNote('Nombre y contenido son obligatorios.'); return; }
+    setSaving(true);
+    const res = await fetch('/api/skills', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ brandId, name: form.name, category: form.category, body: form.body }) });
+    const data = await res.json().catch(() => ({}));
+    setNote(res.ok ? `Habilidad creada: ${form.name}` : (data.error ?? 'Error al crear'));
+    setSaving(false);
+    if (res.ok) setForm(null);
+    load();
+  };
+
+  const saveEdit = async () => {
+    if (!form || !editId) return;
+    setSaving(true);
+    const res = await fetch('/api/skills', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'update', id: editId, name: form.name, category: form.category, body: form.body }) });
+    const data = await res.json().catch(() => ({}));
+    setNote(res.ok ? `Habilidad actualizada (versión ${(data.skill?.version ?? '?')}). Las anteriores quedan en el historial de auditoría.` : (data.error ?? 'Error al actualizar'));
+    setSaving(false);
+    if (res.ok) { setForm(null); setEditId(null); }
+    load();
+  };
+
+  const archive = async (id: string, name: string) => {
+    setSaving(true);
+    await fetch('/api/skills', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'archive', id }) });
+    setNote(`Habilidad "${name}" archivada.`);
+    setSaving(false);
+    load();
+  };
+
+  return (
+    <Card className="mt-4">
+      <CardHeader className="pb-1">
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <CardTitle className="text-sm">Biblioteca de habilidades (SKILL.md)</CardTitle>
+            <CardDescription>Procedimientos versionados en base de datos que los agentes consultan al ejecutar. Semilla de autoría propia + habilidades que crees tú. Globales y de marca conviven.</CardDescription>
+          </div>
+          {!form && <Button size="sm" variant="outline" onClick={() => { setForm({ name: '', category: 'CONTENT', body: '' }); setEditId(null); setNote(''); }}>Nueva habilidad</Button>}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {note && <p className="text-xs text-muted-foreground">{note}</p>}
+
+        {form && (
+          <div className="space-y-2 rounded-lg border p-3">
+            <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Nombre de la habilidad" />
+            <div className="flex flex-wrap gap-1">
+              {SKILL_CATEGORIES.map((c) => (
+                <button key={c} onClick={() => setForm({ ...form, category: c })}
+                  className={`rounded-full border px-2.5 py-1 text-[10px] font-medium transition-colors ${form.category === c ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:bg-accent'}`}
+                  aria-pressed={form.category === c}>{SKILL_CAT_LABEL[c]}</button>
+              ))}
+            </div>
+            <Textarea value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} placeholder={'# Título\n## Objetivo\n## Estructura / Protocolo\n## Reglas de marca\n## Criterio de finalización'} rows={8} />
+            <div className="flex gap-2">
+              <Button size="sm" onClick={editId ? saveEdit : create} disabled={saving}>{saving ? 'Guardando…' : editId ? 'Guardar nueva versión' : 'Crear habilidad'}</Button>
+              <Button size="sm" variant="outline" onClick={() => { setForm(null); setEditId(null); }}>Cancelar</Button>
+            </div>
+          </div>
+        )}
+
+        {skills === null && <p className="text-xs text-muted-foreground">Cargando habilidades…</p>}
+
+        {skills !== null && (
+          <div className="grid gap-2 max-h-96 overflow-y-auto">
+            {skills.map((s) => (
+              <div key={s.id} className="rounded-lg border p-3 space-y-1.5">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-semibold">{s.name} <span className="font-normal text-muted-foreground">· v{s.version}</span></p>
+                    <p className="text-[10px] text-muted-foreground"><code>{s.key}</code> · {s.brand ? `de marca (${s.brand.name})` : 'global'}{s.source === 'semilla' ? ' · semilla del arnés' : ''}</p>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Badge variant="outline" className="text-[10px]">{SKILL_CAT_LABEL[s.category] ?? s.category}</Badge>
+                    {s.status === 'DRAFT' && <Badge variant="outline" className="text-[10px]">Borrador</Badge>}
+                  </div>
+                </div>
+                {expanded === s.id ? (
+                  <pre className="whitespace-pre-wrap text-[11px] text-muted-foreground max-h-64 overflow-y-auto rounded bg-muted p-2">{s.body}</pre>
+                ) : (
+                  <p className="text-[11px] text-muted-foreground line-clamp-2">{s.body.split('\n').filter((l) => l && !l.startsWith('#')).slice(0, 2).join(' ')}</p>
+                )}
+                <div className="flex flex-wrap gap-1.5">
+                  <Button size="sm" variant="ghost" className="h-6 px-2 text-[10px]" onClick={() => setExpanded(expanded === s.id ? null : s.id)}>{expanded === s.id ? 'Ocultar' : 'Ver completa'}</Button>
+                  <Button size="sm" variant="ghost" className="h-6 px-2 text-[10px]" onClick={() => { setForm({ name: s.name, category: s.category, body: s.body }); setEditId(s.id); setNote(`Editando "${s.name}": al guardar se crea la versión ${s.version + 1}.`); }}>Editar</Button>
+                  <Button size="sm" variant="ghost" className="h-6 px-2 text-[10px] text-destructive" disabled={saving} onClick={() => archive(s.id, s.name)}>Archivar</Button>
+                </div>
+              </div>
+            ))}
+            {skills.length === 0 && <p className="text-xs text-muted-foreground">Sin habilidades aún.</p>}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

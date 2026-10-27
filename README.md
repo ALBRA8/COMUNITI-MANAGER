@@ -31,9 +31,9 @@ y consume:
 | Producción de vídeo YouTube | YOUTUBE-AUTOMATION | A2A `/api/agent/execute` (25 tools MCP) |
 | Investigación de nichos | NEX-SCOPE | MCP (12 tools) |
 
-Lo que el arnés añade: publicación multi-red (IG/FB/TikTok/X/LinkedIn), comentarios
-públicos, analítica cross-red, calendario editorial, memoria de marca y el ciclo
-de gobierno con aprobación humana.
+Lo que el arnés añade: publicación multi-red (IG/FB/TikTok/X/LinkedIn) programada automáticamente, comentarios
+públicos, analítica cross-red, calendario editorial, memoria de marca con biblioteca de habilidades versionadas
+(SKILL.md) y el ciclo de gobierno con aprobación humana.
 
 ## Capturas
 
@@ -86,14 +86,15 @@ SCRAPECREATORS_API_KEY=    HARNESS_WEBHOOK_SECRET=
 ## Uso en 4 pasos
 
 1. **Marcas y cuentas** — crea tu marca: identidad, tono, vocabulario, palabras prohibidas, políticas, FAQs y horarios.
-2. **Resumen ejecutivo** — ejecuta el ciclo autónomo; obsérvalo detenerse en APROBACIÓN si el modo es supervisado (L2).
+2. **Automatizaciones** — programa el ciclo diario por marca (hora local + zona horaria + días); el arnés lo dispara solo, respeta la pausa global y no se duplica.
 3. **Cola de aprobaciones** — decide con motivo; el ciclo continúa hasta PUBLICAR (honesto: sin conector → `pendiente de conector`).
-4. **Comentarios y mensajes** — clasifica interacciones; responde, deriva o modera según política y nivel de autonomía.
+4. **Comentarios y mensajes** — clasifica interacciones; responde, deriva o modera según política y nivel de autonomía. Las habilidades (SKILL.md) que creas en Memoria de marca guían a los agentes.
 
 ## Arquitectura en una mirada
 
-- **Motor** (`app/src/lib`): `contracts` (21 contratos con riesgo por acción), `registry` (herramientas con estados honestos), `agents` (14 agentes con firewall de contratos), `executor` (firewall + auditoría + idempotencia), `brand-memory` (vocabulario, precios, promesas, FAQs), `orchestrator` + `cycle` (12 fases, reintentos con backoff, pausa global).
-- **APIs** (`app/src/app/api`): brands, drafts, orchestrator, approvals, community, research, calendar, analytics, webhooks, errors, audit, harness (doctor/pausa/modo).
+- **Motor** (`app/src/lib`): `contracts` (21 contratos con riesgo por acción), `registry` (herramientas con estados honestos), `agents` (14 agentes con firewall de contratos), `executor` (firewall + auditoría + idempotencia), `brand-memory` (vocabulario, precios, promesas, FAQs), `orchestrator` + `cycle` (12 fases, reintentos con backoff, pausa global), `scheduler` (ciclo diario programado por marca con zona horaria y anti-duplicado), `skills` (biblioteca SKILL.md versionada), `webhook-security` (verificación HMAC-SHA256 de webhooks entrantes).
+- **Arranque** (`app/src/instrumentation.ts`): el bucle del scheduler (tick cada 60 s) arranca con el servidor; alternativamente un cron externo puede llamar `POST /api/scheduler {action:tick}` firmado.
+- **APIs** (`app/src/app/api`): brands, drafts, orchestrator, approvals, community, research, calendar, analytics, webhooks, errors, audit, harness (doctor/pausa/modo), scheduler, skills.
 - **UI** (`app/src/app` + `components/sections`): panel en español con las 18 secciones del PRD.
 - **Especialización Python** (`especializacion-albra/`): capa que viste a AGENTE-GENERAL sin tocar su código (`albra_seed` invariante).
 

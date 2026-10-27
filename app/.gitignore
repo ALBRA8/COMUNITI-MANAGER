@@ -29,3 +29,5 @@ Thumbs.db
 *.log
 .idea/
 .vscode/
+build.done
+*.done

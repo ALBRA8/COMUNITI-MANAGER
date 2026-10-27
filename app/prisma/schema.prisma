@@ -39,6 +39,8 @@ model Brand {
   metrics     MetricSnapshot[]
   experiments Experiment[]
   accounts    SocialAccount[]
+  schedules   Schedule[]
+  skills      Skill[]
 }
 
 model SocialAccount {
@@ -275,6 +277,48 @@ model AuditEntry {
   reason     String   @default("")
   dataJson   String   @default("{}")
   createdAt  DateTime @default(now())
+}
+
+// ─── Programaciones (scheduler del ciclo) ─────────────────────────
+
+model Schedule {
+  id         String   @id @default(cuid())
+  brandId    String
+  name       String   @default("Ciclo diario")
+  hour       Int // 0-23, hora local según timezone
+  minute     Int      @default(0) // 0-59
+  days       String   @default("1,2,3,4,5,6,7") // días de la semana ISO (1=lunes)
+  timezone   String   @default("America/Bogota")
+  topic      String   @default("") // tema opcional para el ciclo
+  objective  String   @default("") // objetivo opcional para el ciclo
+  enabled    Boolean  @default(true)
+  lastRunAt  DateTime? // anti-duplicado: no re-disparar el mismo día
+  lastResult String   @default("") // resumen honesto de la última ejecución
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  brand Brand @relation(fields: [brandId], references: [id])
+
+  @@index([brandId, enabled])
+}
+
+// ─── Biblioteca de habilidades (SKILL.md versionadas) ─────────────
+
+model Skill {
+  id        String   @id @default(cuid())
+  brandId   String? // null = skill global; si tiene marca, es específica
+  key       String   @unique // slug estable, p.ej. "post-valor-3-actos"
+  name      String
+  category  String   @default("CONTENT") // CONTENT | ENGAGEMENT | ANALYTICS | CRISIS | GROWTH
+  format    String   @default("SKILL.md")
+  body      String // contenido markdown completo de la habilidad
+  version   Int      @default(1) // se incrementa en cada edición
+  status    String   @default("ACTIVE") // DRAFT | ACTIVE | ARCHIVED
+  source    String   @default("manual") // manual | semilla
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  brand Brand? @relation(fields: [brandId], references: [id])
 }
 
 // ─── Configuración ────────────────────────────────────────────────
