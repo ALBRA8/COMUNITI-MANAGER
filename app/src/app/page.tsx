@@ -119,7 +119,7 @@ export default function Page() {
             <LayoutDashboard className="h-5 w-5" />
           </Button>
           <div className="flex items-center gap-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground font-bold text-xs">SA</div>
+            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground font-bold text-xs shadow-sm ring-1 ring-foreground/10">SA</div>
             <div className="leading-tight">
               <p className="text-sm font-semibold">Social Autopilot AI</p>
               <p className="text-[11px] text-muted-foreground hidden sm:block">Arnés para el ecosistema de agentes ALBRA</p>
@@ -238,7 +238,9 @@ export default function Page() {
                 <div className="h-8 w-48 animate-pulse rounded bg-muted" />
                 <div className="h-40 animate-pulse rounded-lg bg-muted" />
               </div>
-            ) : active === 'dashboard' ? <DashboardSection harness={harness} brandId={brandId} refresh={refresh} />
+            ) : (
+              <div key={active} className="animate-in fade-in slide-in-from-bottom-1 duration-300">
+            {active === 'dashboard' ? <DashboardSection harness={harness} brandId={brandId} refresh={refresh} />
             : active === 'brands' ? <BrandsSection harness={harness} brandId={brandId} refresh={refresh} />
             : active === 'calendar' ? <CalendarSection harness={harness} brandId={brandId} refresh={refresh} />
             : active === 'inbox' ? <CommunitySection harness={harness} brandId={brandId} refresh={refresh} />
@@ -258,6 +260,8 @@ export default function Page() {
             : active === 'security' ? <SecuritySection harness={harness} brandId={brandId} refresh={refresh} />
             : active === 'fbgroups' ? <FbGroupsSection harness={harness} brandId={brandId} refresh={refresh} />
             : null}
+              </div>
+            )}
           </div>
         </main>
       </div>

@@ -189,3 +189,14 @@ con su motivo exacto).
   colección auto-join y lo pone en rotación; REQUESTED lo crea excluido
   esperando al admin; SKIPPED (ya miembro) no consume techo. Los cuestionarios
   de admisión nunca se automatizan. *(hecho)*
+- **P7** Mejoras del roadmap (docs/research/MEJORAS_REPOS_JVZOO.md §E, items 1-4
+  + 2 gaps menores de paridad): score de riesgo pre-vuelo 0-100 con factores
+  deterministas y mitigaciones (instantánea persistida por campaña, gauge en vivo
+  en el formulario, peor caso = cuenta más joven), log de entrega por grupo
+  (tabla expandible por campaña: estado, variante, postUrl, motivo, worker),
+  rotación determinista de adjuntos entre los jobs de una campaña, bump-comment
+  con delay (commentDelaySec ±15% jitter humano en el worker), negrita unicode
+  por segmentos *marcados* (post-spintax/IA, tildes intactas), y proxy por cuenta
+  (declarado en el panel enmascarado, aplicado en el Chrome del worker vía
+  FB_PROXY). Rediseño visual del panel del módulo: franja de KPIs con consumo
+  del día, medidores por worker, chips de color y transiciones. *(hecho)*

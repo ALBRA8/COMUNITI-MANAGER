@@ -339,6 +339,7 @@ model FbWorker {
   status         String    @default("OFFLINE") // OFFLINE | IDLE | RUNNING | AWAITING_SESSION | PAUSED_ANTI_BAN | CHALLENGE_DETECTED
   lastSeenAt     DateTime?
   sessionAgeDays Int       @default(30) // antigüedad declarada de la cuenta FB (warmup)
+  proxyUrl       String    @default("") // proxy declarado de la cuenta (documentación; el Chrome real lo toma del .env del worker)
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
@@ -373,6 +374,11 @@ model FbCampaign {
   windowStart  Int      @default(7) // hora local inicio ventana de publicación
   windowEnd    Int      @default(21)
   mediaUrls    String   @default("[]") // JSON: hasta 4 adjuntos (URL http(s) o ruta local del worker)
+  mediaMode    String   @default("all") // all: todos los adjuntos en cada post | rotate: una imagen distinta por grupo (rotación determinista)
+  commentDelaySec Int    @default(0) // espera antes del primer comentario (bump-comment con delay, 0 = inmediato)
+  boldStyle    String   @default("none") // none | unicode: convierte *segmentos* del texto en negrita unicode
+  riskScore    Int      @default(0) // score de riesgo pre-vuelo 0-100 (instantánea al crear, peor caso de cuenta)
+  riskLevel    String   @default("") // BAJO | MEDIO | ALTO (etiqueta del score al crear)
   status       String   @default("QUEUED") // QUEUED | RUNNING | DONE | PAUSED | CANCELLED
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt

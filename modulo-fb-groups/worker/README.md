@@ -80,6 +80,36 @@ corte nocturno y pausa defensiva de 12 h compartidos con la publicación.
 Los grupos con cuestionario de admisión o cuya unión no se puede confirmar
 quedan en `FAILED`: **nunca se automatizan respuestas ni se fuerza nada**.
 
+### Rotación de adjuntos (P7)
+
+Con 2 o más imágenes y la casilla **Rotar adjuntos** marcada, cada grupo recibe
+una imagen distinta del pool (rotación determinista por job: re-claims estables,
+reparto variado entre los jobs de la campaña). Sin la casilla, todos los posts
+llevan los 4 adjuntos como siempre.
+
+### Bump-comment con delay (P7)
+
+Si la campaña define **Espera antes del comentario** (recomendado 60-300 s), el
+worker publica el post, espera ese valor ±15% de jitter humano y después publica
+el primer comentario. Con 0 (por defecto) comenta de inmediato, como siempre.
+El post ya está publicado cuando se abre la espera: el delay no retrasa la cola.
+
+### Negrita unicode (P7)
+
+Facebook no admite texto enriquecido. Con énfasis **unicode**, los segmentos
+marcados con asteriscos en el texto base se convierten a caracteres unicode de
+negrita (`*oferta*` → `𝗼𝗳𝗲𝗿𝘁𝗮`). Se aplica tras el spintax/IA; tildes y ñ quedan
+intactas y el texto sigue legible si la plataforma no renderiza el glifo.
+
+### Proxy por cuenta (P7)
+
+El Chrome completo del worker puede salir por un proxy: define en el `.env` del
+worker `FB_PROXY` (p. ej. `http://usuario:pass@proxy.local:8080` o `socks5://host:1080`)
+y opcionalmente `FB_PROXY_USERNAME` / `FB_PROXY_PASSWORD`. El panel solo **declara**
+qué cuenta usa qué proxy (mostrado enmascarado, sin credenciales) para que varias
+cuentas no compartan IP. Si el proxy está caído, el fallo es honesto y visible:
+no hay reintentos ciegos.
+
 ## Checklist de la primera campaña real
 
 1. Worker registrado en el panel y `npm start` con el `.env` completo.
@@ -89,6 +119,7 @@ quedan en `FAILED`: **nunca se automatizan respuestas ni se fuerza nada**.
    y excluye los que no quieras en rotación.
 5. Antigüedad de la cuenta declarada con honestidad (define el techo: 5/10/20).
 6. Primera campaña: **2 o 3 grupos, no 30**. Texto con `{spintax|variaciones}`.
+   El **gauge de riesgo pre-vuelo** del formulario te avisa antes de crearla.
 7. Mira la ventana de Chrome: verifica que el post quedó como esperabas.
 8. Revisa el panel: `POSTED` con URL, o el motivo honesto si falló.
 9. Deja correr el ritmo (3-10 min entre grupos). No fuerces tandas.

@@ -1,9 +1,11 @@
 'use client';
 
 // Sección: Grupos de Facebook (módulo FB-GROUPS, el "pantalón" del chaleco)
-// FICHA: modulo-fb-groups/FICHA.md — workers, grupos, campañas y anti-ban.
+// FICHA: modulo-fb-groups/FICHA.md — workers, grupos, auto-join, campañas y anti-ban.
+// Rediseño visual: franja de KPIs, gauge de riesgo pre-vuelo, log de entrega por
+// grupo y controles de las mejoras P7-P8 (rotación, bump-comment, bold, proxy).
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -11,19 +13,36 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SectionHeader } from '@/components/sections/dashboard';
+import { computeRiskScore, riskInputFromCampaign } from '@/lib/fb-risk';
+import type { RiskInput, RiskResult } from '@/lib/fb-risk';
+import {
+  UsersRound, Users, Send, ShieldAlert, ShieldCheck, ImageIcon,
+  MessageCircle, ChevronDown, ChevronUp, Radio, Activity, AlertTriangle,
+} from 'lucide-react';
 import type { SectionProps } from '@/app/page';
 
 interface FbWorkerRow {
   id: string; name: string; baseUrl: string; mode: string; status: string;
   lastSeenAt: string | null; sessionAgeDays: number;
+  proxyConfigured: boolean; proxyMasked: string;
+  usage: { postsToday: number; cap: number; joinsToday: number; joinCap: number };
 }
 interface FbGroupRow {
   id: string; fbId: string; name: string; url: string; collection: string;
   excluded: boolean; lastPostedAt: string | null;
 }
+interface FbJobRow {
+  id: string; status: string; targetName: string; targetKind: string;
+  variantSource: string; postUrl: string; failReason: string;
+  postedAt: string | null; attempts: number; workerName: string | null;
+}
 interface FbCampaignRow {
   id: string; name: string; mode: string; engine: string; status: string;
-  createdAt: string; mediaCount: number; counts: { total: number; queued: number; posted: number; failed: number; review: number };
+  createdAt: string; mediaCount: number; mediaMode: string; boldStyle: string;
+  commentDelaySec: number; riskScore: number; riskLevel: string;
+  text: string; firstComment: string;
+  counts: { total: number; queued: number; posted: number; failed: number; review: number };
+  jobs: FbJobRow[];
 }
 interface FbAlertRow {
   id: string; kind: string; message: string; pausedUntil: string | null; resolved: boolean; createdAt: string;
@@ -33,6 +52,13 @@ interface FbJoinTaskRow {
   failReason: string; joinedAt: string | null; createdAt: string; workerName: string | null;
 }
 
+// Chips de color (fuera del sistema de variantes de shadcn para poder matizar)
+const CHIP_OK = 'inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300';
+const CHIP_WARN = 'inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-500/15 dark:text-amber-300';
+const CHIP_BAD = 'inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-800 dark:bg-red-500/15 dark:text-red-300';
+const CHIP_INFO = 'inline-flex items-center rounded-full bg-teal-100 px-2 py-0.5 text-[10px] font-medium text-teal-800 dark:bg-teal-500/15 dark:text-teal-300';
+const CHIP_NEUTRAL = 'inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground';
+
 const WORKER_STATUS_LABEL: Record<string, string> = {
   OFFLINE: 'Sin conexión', IDLE: 'Inactivo', RUNNING: 'Publicando',
   AWAITING_SESSION: 'Esperando sesión', PAUSED_ANTI_BAN: 'Pausa anti-ban', CHALLENGE_DETECTED: 'Desafío detectado',
@@ -41,18 +67,28 @@ const WORKER_STATUS_VARIANT: Record<string, 'default' | 'secondary' | 'destructi
   OFFLINE: 'outline', IDLE: 'secondary', RUNNING: 'default',
   AWAITING_SESSION: 'outline', PAUSED_ANTI_BAN: 'destructive', CHALLENGE_DETECTED: 'destructive',
 };
+const WORKER_DOT: Record<string, string> = {
+  OFFLINE: 'bg-zinc-400', IDLE: 'bg-emerald-500', RUNNING: 'bg-emerald-600 animate-pulse',
+  AWAITING_SESSION: 'bg-amber-500', PAUSED_ANTI_BAN: 'bg-red-500', CHALLENGE_DETECTED: 'bg-red-600 animate-pulse',
+};
 const JOB_STATUS_LABEL: Record<string, string> = {
   QUEUED: 'En cola', LEASED: 'Asignado', POSTED: 'Publicado', FAILED: 'Fallido',
   SKIPPED: 'Omitido', PENDING_REVIEW: 'Revisión de admin', CANCELLED: 'Cancelado',
+};
+const JOB_STATUS_CHIP: Record<string, string> = {
+  QUEUED: CHIP_NEUTRAL, LEASED: CHIP_INFO, POSTED: CHIP_OK, FAILED: CHIP_BAD,
+  SKIPPED: CHIP_NEUTRAL, PENDING_REVIEW: CHIP_WARN, CANCELLED: CHIP_NEUTRAL,
 };
 const JOIN_STATUS_LABEL: Record<string, string> = {
   PENDING: 'En cola', LEASED: 'Uniéndose', JOINED: 'Unido', REQUESTED: 'Solicitud pendiente',
   SKIPPED: 'Ya miembro', FAILED: 'Fallido', CANCELLED: 'Cancelado',
 };
-const JOIN_STATUS_VARIANT: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
-  PENDING: 'outline', LEASED: 'secondary', JOINED: 'default', REQUESTED: 'secondary',
-  SKIPPED: 'outline', FAILED: 'destructive', CANCELLED: 'outline',
+const JOIN_STATUS_CHIP: Record<string, string> = {
+  PENDING: CHIP_NEUTRAL, LEASED: CHIP_INFO, JOINED: CHIP_OK, REQUESTED: CHIP_WARN,
+  SKIPPED: CHIP_NEUTRAL, FAILED: CHIP_BAD, CANCELLED: CHIP_NEUTRAL,
 };
+
+const RISK_CHIP: Record<string, string> = { BAJO: CHIP_OK, MEDIO: CHIP_WARN, ALTO: CHIP_BAD };
 
 export function FbGroupsSection({ brandId, refresh }: SectionProps) {
   const [workers, setWorkers] = useState<FbWorkerRow[]>([]);
@@ -62,7 +98,7 @@ export function FbGroupsSection({ brandId, refresh }: SectionProps) {
   const [joinTasks, setJoinTasks] = useState<FbJoinTaskRow[]>([]);
   const [joinCounts, setJoinCounts] = useState<Record<string, number>>({});
   const [secretShown, setSecretShown] = useState<string>('');
-  const [notice, setNotice] = useState<string>('');
+  const [notice, setNotice] = useState<{ msg: string; ok: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -80,7 +116,7 @@ export function FbGroupsSection({ brandId, refresh }: SectionProps) {
       setJoinTasks(j.tasks ?? []);
       setJoinCounts(j.counts ?? {});
     } catch {
-      setNotice('No se pudo cargar el módulo FB-GROUPS');
+      setNotice({ msg: 'No se pudo cargar el módulo FB-GROUPS', ok: false });
     }
   }, []);
 
@@ -95,8 +131,8 @@ export function FbGroupsSection({ brandId, refresh }: SectionProps) {
     try {
       const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) { setNotice(data.error ?? 'Error en la operación'); return null; }
-      setNotice(okMsg);
+      if (!res.ok) { setNotice({ msg: data.error ?? 'Error en la operación', ok: false }); return null; }
+      setNotice({ msg: okMsg, ok: true });
       await load();
       refresh?.();
       return data;
@@ -105,21 +141,75 @@ export function FbGroupsSection({ brandId, refresh }: SectionProps) {
     }
   };
 
+  // KPIs agregados
+  const groupsActive = groups.filter((g) => !g.excluded);
+  const postsToday = workers.reduce((a, w) => a + (w.usage?.postsToday ?? 0), 0);
+  const capTotal = workers.reduce((a, w) => a + (w.usage?.cap ?? 0), 0);
+  const joinsToday = workers.reduce((a, w) => a + (w.usage?.joinsToday ?? 0), 0);
+  const joinCapTotal = workers.reduce((a, w) => a + (w.usage?.joinCap ?? 0), 0);
+  const activeAlerts = alerts.filter((a) => !a.resolved);
+  const pauseActive = activeAlerts.some((a) => a.pausedUntil && new Date(a.pausedUntil) > new Date());
+  const collections = new Set(groups.map((g) => g.collection)).size;
+
   return (
-    <div>
+    <div className="space-y-5">
       <SectionHeader
         title="Grupos de Facebook"
         description="El pantalón del chaleco: publicación en grupos a ritmo humano desde un Chrome real con tu propia sesión. La API oficial de grupos de Meta fue eliminada el 22/04/2024; este módulo es la vía honesta y su riesgo está declarado en la FICHA."
       />
 
+      {/* Franja de KPIs */}
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <Kpi
+          icon={UsersRound}
+          label="Workers"
+          value={String(workers.filter((w) => w.status !== 'OFFLINE').length)}
+          sub={`${workers.length} registrado(s) · ${pauseActive ? 'con pausa activa' : 'sin pausas'}`}
+          tone={pauseActive ? 'bad' : 'ok'}
+        />
+        <Kpi
+          icon={Users}
+          label="Grupos en rotación"
+          value={`${groupsActive.length}/${groups.length}`}
+          sub={`${collections} colecciones · ${joinCounts.JOINED ?? 0} por auto-join`}
+          tone="neutral"
+        />
+        <Kpi
+          icon={Send}
+          label="Posts hoy"
+          value={String(postsToday)}
+          sub={capTotal > 0 ? `techo agregado ${capTotal} · ${joinsToday}/${joinCapTotal} uniones` : 'sin workers: sin techo aún'}
+          progress={capTotal > 0 ? postsToday / capTotal : 0}
+          tone="neutral"
+        />
+        <Kpi
+          icon={ShieldAlert}
+          label="Alertas activas"
+          value={String(activeAlerts.length)}
+          sub={activeAlerts.length === 0 ? 'escudo sin novedades' : activeAlerts[0].message.slice(0, 60)}
+          tone={activeAlerts.length === 0 ? 'ok' : 'warn'}
+        />
+      </div>
+
       {notice && (
-        <p className="mb-3 text-xs text-muted-foreground border-l-2 border-primary pl-2">{notice}</p>
+        <div
+          role="status"
+          className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-xs ${
+            notice.ok
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200'
+              : 'border-red-200 bg-red-50 text-red-900 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200'
+          }`}
+        >
+          {notice.ok ? <Activity className="mt-0.5 h-3.5 w-3.5 shrink-0" /> : <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />}
+          <span className="break-words">{notice.msg}</span>
+          <button className="ml-auto shrink-0 opacity-60 hover:opacity-100" onClick={() => setNotice(null)} aria-label="Cerrar aviso">×</button>
+        </div>
       )}
 
       {/* Workers */}
-      <Card className="mb-4">
+      <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm">Workers de publicación</CardTitle>
+          <CardTitle className="flex items-center gap-2 text-sm"><Radio className="h-4 w-4 text-primary" /> Workers de publicación</CardTitle>
           <CardDescription>El mismo worker corre en tu PC (mismo riesgo que las herramientas del mercado) o en un VPS 24/7. El chaleco solo habla HMAC con él.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -130,22 +220,39 @@ export function FbGroupsSection({ brandId, refresh }: SectionProps) {
           {workers.length === 0 ? (
             <p className="text-xs text-muted-foreground">Sin workers registrados. Registra uno para activar la publicación en grupos.</p>
           ) : (
-            <div className="grid gap-2 md:grid-cols-2">
+            <div className="grid gap-2.5 lg:grid-cols-2">
               {workers.map((w) => (
-                <div key={w.id} className="rounded border p-2.5 text-xs space-y-1.5">
+                <div key={w.id} className="rounded-lg border p-3 text-xs space-y-2 transition-colors hover:border-primary/30">
                   <div className="flex items-center justify-between gap-2">
-                    <b>{w.name}</b>
-                    <Badge variant={WORKER_STATUS_VARIANT[w.status] ?? 'outline'}>{WORKER_STATUS_LABEL[w.status] ?? w.status}</Badge>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className={`h-2 w-2 shrink-0 rounded-full ${WORKER_DOT[w.status] ?? 'bg-zinc-400'}`} aria-hidden />
+                      <b className="truncate">{w.name}</b>
+                      <Badge variant={WORKER_STATUS_VARIANT[w.status] ?? 'outline'}>{WORKER_STATUS_LABEL[w.status] ?? w.status}</Badge>
+                    </div>
+                    <span className="text-muted-foreground shrink-0">{w.mode === 'vps' ? 'VPS 24/7' : 'PC local'}</span>
                   </div>
-                  <p className="text-muted-foreground">{w.baseUrl} · modo {w.mode === 'vps' ? 'VPS 24/7' : 'PC local'}</p>
-                  <p className="text-muted-foreground">Cuenta FB declarada: {w.sessionAgeDays} días · techo {w.sessionAgeDays < 7 ? 5 : w.sessionAgeDays < 14 ? 10 : 20}/día</p>
-                  <p className="text-muted-foreground">Última visita: {w.lastSeenAt ? new Date(w.lastSeenAt).toLocaleString('es-CO') : 'nunca'}</p>
+                  <p className="text-muted-foreground truncate">{w.baseUrl}</p>
+                  {/* Consumo del día: posts y uniones contra su techo de warmup */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <MiniMeter label="Posts hoy" used={w.usage?.postsToday ?? 0} cap={w.usage?.cap ?? 0} />
+                    <MiniMeter label="Uniones hoy" used={w.usage?.joinsToday ?? 0} cap={w.usage?.joinCap ?? 0} />
+                  </div>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground">
+                    <span>Cuenta: {w.sessionAgeDays} días</span>
+                    <span className={w.proxyConfigured ? 'text-teal-700 dark:text-teal-300' : ''}>
+                      Proxy: {w.proxyConfigured ? (w.proxyMasked || 'configurado') : 'salida directa'}
+                    </span>
+                    <span>Última visita: {w.lastSeenAt ? new Date(w.lastSeenAt).toLocaleString('es-CO') : 'nunca'}</span>
+                  </div>
                   <div className="flex gap-1.5 flex-wrap">
-                    <Input type="number" className="h-7 w-24 text-xs" defaultValue={w.sessionAgeDays} min={0}
-                      onBlur={async (e) => {
-                        const v = Number(e.target.value);
-                        if (v !== w.sessionAgeDays) await post('/api/fb-workers', { action: 'set_session_age', workerId: w.id, sessionAgeDays: v }, 'Antigüedad actualizada (warmup recalculado)');
-                      }} />
+                    <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                      Días
+                      <Input type="number" className="h-7 w-20 text-xs" defaultValue={w.sessionAgeDays} min={0}
+                        onBlur={async (e) => {
+                          const v = Number(e.target.value);
+                          if (v !== w.sessionAgeDays) await post('/api/fb-workers', { action: 'set_session_age', workerId: w.id, sessionAgeDays: v }, 'Antigüedad actualizada (warmup recalculado)');
+                        }} />
+                    </label>
                     <Button size="sm" variant="outline" className="h-7 text-xs" disabled={busy}
                       onClick={() => post('/api/fb-workers', { action: 'delete', workerId: w.id }, 'Worker eliminado')}>
                       Eliminar
@@ -156,7 +263,7 @@ export function FbGroupsSection({ brandId, refresh }: SectionProps) {
             </div>
           )}
           {secretShown && (
-            <div className="rounded border border-dashed p-2.5 text-xs">
+            <div className="rounded-lg border border-dashed border-primary/40 bg-primary/5 p-2.5 text-xs">
               <b>Secreto del worker (una sola vez):</b>
               <code className="block mt-1 break-all text-[10px]">{secretShown}</code>
             </div>
@@ -165,55 +272,27 @@ export function FbGroupsSection({ brandId, refresh }: SectionProps) {
       </Card>
 
       {/* Grupos */}
-      <Card className="mb-4">
+      <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm">Grupos ({groups.length})</CardTitle>
+          <CardTitle className="flex items-center gap-2 text-sm"><Users className="h-4 w-4 text-primary" /> Grupos ({groups.length})</CardTitle>
           <CardDescription>Importados por el worker (sync por DOM) o pegados a mano. Colecciones por nicho; los excluidos salen de la rotación.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <GroupImport busy={busy} onImport={async (payload) => {
             await post('/api/fb-groups', payload, `Importación completada: ${payload.groups.length} grupos procesados`);
           }} />
-          {groups.length > 0 && (
-            <div className="max-h-64 overflow-auto rounded border">
-              <table className="w-full text-xs">
-                <thead className="bg-muted/50 sticky top-0">
-                  <tr>
-                    <th className="p-1.5 text-left font-medium">Grupo</th>
-                    <th className="p-1.5 text-left font-medium">Colección</th>
-                    <th className="p-1.5 text-left font-medium">Último post</th>
-                    <th className="p-1.5 text-left font-medium">Rotación</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {groups.map((g) => (
-                    <tr key={g.id} className="border-t">
-                      <td className="p-1.5">{g.name}</td>
-                      <td className="p-1.5"><code className="text-[10px]">{g.collection}</code></td>
-                      <td className="p-1.5 text-muted-foreground">{g.lastPostedAt ? new Date(g.lastPostedAt).toLocaleDateString('es-CO') : '—'}</td>
-                      <td className="p-1.5">
-                        <Button size="sm" variant={g.excluded ? 'destructive' : 'outline'} className="h-6 text-[10px]" disabled={busy}
-                          onClick={async () => {
-                            await fetch('/api/fb-groups', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: g.id, excluded: !g.excluded }) });
-                            setNotice(`Grupo "${g.name}" ${g.excluded ? 'de vuelta en rotación' : 'excluido de la rotación'}`);
-                            await load();
-                          }}>
-                          {g.excluded ? 'Excluido' : 'Activo'}
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          {groups.length > 0 && <GroupsTable groups={groups} busy={busy} onToggle={async (g) => {
+            await fetch('/api/fb-groups', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: g.id, excluded: !g.excluded }) });
+            setNotice({ msg: `Grupo "${g.name}" ${g.excluded ? 'de vuelta en rotación' : 'excluido de la rotación'}`, ok: true });
+            await load();
+          }} />}
         </CardContent>
       </Card>
 
       {/* Auto-join (P6) */}
-      <Card className="mb-4">
+      <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm">Auto-join: unirse a grupos (P6)</CardTitle>
+          <CardTitle className="flex items-center gap-2 text-sm"><UsersRound className="h-4 w-4 text-primary" /> Auto-join: unirse a grupos (P6)</CardTitle>
           <CardDescription>
             Pega URLs de grupos y el worker se une a ritmo humano (huecos 20-45 min, techo 2/4/6 al día según
             antigüedad, corte nocturno). Al confirmarse JOINED el grupo entra en la colección <code>auto-join</code> y
@@ -224,110 +303,84 @@ export function FbGroupsSection({ brandId, refresh }: SectionProps) {
           <JoinForm busy={busy} onCreate={async (payload) => {
             const data = await post('/api/fb-joins', payload, 'Tareas de unión creadas: el worker las reclamará respetando su techo y ritmo.');
             if (data && (data.rejected ?? []).length > 0) {
-              setNotice(`Tareas creadas: ${data.created}. Rechazadas: ${(data.rejected as Array<{ reason: string }>).map((r) => r.reason).join(' | ')}`);
+              setNotice({ msg: `Tareas creadas: ${data.created}. Rechazadas: ${(data.rejected as Array<{ reason: string }>).map((r) => r.reason).join(' | ')}`, ok: false });
             }
           }} />
           {joinTasks.length > 0 && (
-            <div className="max-h-56 overflow-auto rounded border">
-              <table className="w-full text-xs">
-                <thead className="bg-muted/50 sticky top-0">
-                  <tr>
-                    <th className="p-1.5 text-left font-medium">Grupo</th>
-                    <th className="p-1.5 text-left font-medium">Keyword</th>
-                    <th className="p-1.5 text-left font-medium">Estado</th>
-                    <th className="p-1.5 text-left font-medium">Detalle</th>
-                    <th className="p-1.5 text-left font-medium"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {joinTasks.map((t) => (
-                    <tr key={t.id} className="border-t">
-                      <td className="p-1.5 max-w-[220px] truncate"><a href={t.url} target="_blank" rel="noreferrer" className="underline-offset-2 hover:underline">{t.fbId}</a></td>
-                      <td className="p-1.5"><code className="text-[10px]">{t.keyword || '—'}</code></td>
-                      <td className="p-1.5"><Badge variant={JOIN_STATUS_VARIANT[t.status] ?? 'outline'}>{JOIN_STATUS_LABEL[t.status] ?? t.status}</Badge></td>
-                      <td className="p-1.5 text-muted-foreground max-w-[260px] truncate" title={t.failReason}>
-                        {t.joinedAt ? `unido ${new Date(t.joinedAt).toLocaleDateString('es-CO')}` : t.failReason || `${t.attempts} intento(s)`}
-                      </td>
-                      <td className="p-1.5">
-                        {['PENDING', 'FAILED'].includes(t.status) ? (
-                          <Button size="sm" variant="outline" className="h-6 text-[10px]" disabled={busy}
-                            onClick={async () => {
-                              await fetch('/api/fb-joins', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: t.id, action: 'cancel' }) });
-                              setNotice('Tarea de unión cancelada'); await load();
-                            }}>
-                            Cancelar
-                          </Button>
-                        ) : ['JOINED', 'REQUESTED', 'SKIPPED', 'FAILED', 'CANCELLED'].includes(t.status) ? (
-                          <Button size="sm" variant="outline" className="h-6 text-[10px]" disabled={busy}
-                            onClick={async () => {
-                              await fetch('/api/fb-joins', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: t.id, action: 'delete' }) });
-                              setNotice('Tarea terminada eliminada de la lista'); await load();
-                            }}>
-                            Quitar
-                          </Button>
-                        ) : null}
-                      </td>
+            <>
+              <div className="flex flex-wrap gap-1.5">
+                <span className={CHIP_NEUTRAL}>{joinCounts.PENDING ?? 0} en cola</span>
+                <span className={CHIP_INFO}>{joinCounts.LEASED ?? 0} uniéndose</span>
+                <span className={CHIP_OK}>{joinCounts.JOINED ?? 0} unidos</span>
+                <span className={CHIP_WARN}>{joinCounts.REQUESTED ?? 0} esperando admin</span>
+                <span className={CHIP_BAD}>{joinCounts.FAILED ?? 0} fallidos</span>
+              </div>
+              <div className="max-h-64 overflow-auto rounded-lg border">
+                <table className="w-full text-xs">
+                  <thead className="bg-muted/60 sticky top-0 backdrop-blur">
+                    <tr>
+                      <th className="p-2 text-left font-medium">Grupo</th>
+                      <th className="p-2 text-left font-medium">Keyword</th>
+                      <th className="p-2 text-left font-medium">Estado</th>
+                      <th className="p-2 text-left font-medium">Detalle</th>
+                      <th className="p-2 text-left font-medium"></th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-          {joinTasks.length > 0 && (
-            <p className="text-muted-foreground text-[11px]">
-              Cola: {joinCounts.PENDING ?? 0} pendiente(s) · {joinCounts.JOINED ?? 0} unidos · {joinCounts.REQUESTED ?? 0} esperando admin · {joinCounts.FAILED ?? 0} fallidos
-            </p>
+                  </thead>
+                  <tbody>
+                    {joinTasks.map((t) => (
+                      <tr key={t.id} className="border-t transition-colors hover:bg-muted/40">
+                        <td className="p-2 max-w-[220px] truncate"><a href={t.url} target="_blank" rel="noreferrer" className="underline-offset-2 hover:underline">{t.fbId}</a></td>
+                        <td className="p-2"><code className="text-[10px]">{t.keyword || '—'}</code></td>
+                        <td className="p-2"><span className={JOIN_STATUS_CHIP[t.status] ?? CHIP_NEUTRAL}>{JOIN_STATUS_LABEL[t.status] ?? t.status}</span></td>
+                        <td className="p-2 text-muted-foreground max-w-[260px] truncate" title={t.failReason}>
+                          {t.joinedAt ? `unido ${new Date(t.joinedAt).toLocaleDateString('es-CO')}` : t.failReason || `${t.attempts} intento(s)`}
+                        </td>
+                        <td className="p-2">
+                          {['PENDING', 'FAILED'].includes(t.status) ? (
+                            <Button size="sm" variant="outline" className="h-6 text-[10px]" disabled={busy}
+                              onClick={async () => {
+                                await fetch('/api/fb-joins', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: t.id, action: 'cancel' }) });
+                                setNotice({ msg: 'Tarea de unión cancelada', ok: true }); await load();
+                              }}>
+                              Cancelar
+                            </Button>
+                          ) : ['JOINED', 'REQUESTED', 'SKIPPED', 'FAILED', 'CANCELLED'].includes(t.status) ? (
+                            <Button size="sm" variant="outline" className="h-6 text-[10px]" disabled={busy}
+                              onClick={async () => {
+                                await fetch('/api/fb-joins', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: t.id, action: 'delete' }) });
+                                setNotice({ msg: 'Tarea terminada eliminada de la lista', ok: true }); await load();
+                              }}>
+                              Quitar
+                            </Button>
+                          ) : null}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
 
       {/* Campañas */}
-      <Card className="mb-4">
+      <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm">Campañas</CardTitle>
+          <CardTitle className="flex items-center gap-2 text-sm"><Send className="h-4 w-4 text-primary" /> Campañas</CardTitle>
           <CardDescription>Un texto aprobado → una variante única por grupo (spintax determinista; reescritura IA si el nivel L2/L3 lo permite). El worker tira de los jobs con leases anti-doble-disparo.</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-3">
-          <CampaignForm busy={busy} brandId={brandId} groups={groups} onCreate={async (payload) => {
-            await post('/api/fb-campaigns', payload, 'Campaña creada. El worker la recogerá dentro de la ventana horaria y del techo diario.');
+        <CardContent className="space-y-4">
+          <CampaignForm busy={busy} brandId={brandId} groups={groups} workers={workers} onCreate={async (payload) => {
+            const data = await post('/api/fb-campaigns', payload, 'Campaña creada. El worker la recogerá dentro de la ventana horaria y del techo diario.');
+            if (data?.risk) {
+              const r = data.risk as RiskResult;
+              setNotice({ msg: `Campaña creada · riesgo pre-vuelo ${r.score}/100 (${r.level})${r.mitigations.length ? ` · ${r.mitigations[0]}` : ''}`, ok: r.level !== 'ALTO' });
+            }
           }} />
           {campaigns.length > 0 && (
-            <div className="space-y-2">
-              {campaigns.map((c) => (
-                <div key={c.id} className="rounded border p-2.5 text-xs space-y-1.5">
-                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <b>{c.name}</b>
-                    <div className="flex gap-1">
-                      <Badge variant="outline">{c.mode === 'profile' ? 'perfil' : c.mode === 'page_in_group' ? 'Página en grupo' : 'grupos'}</Badge>
-                      <Badge variant={c.status === 'DONE' ? 'default' : c.status === 'CANCELLED' || c.status === 'PAUSED' ? 'destructive' : 'secondary'}>{c.status}</Badge>
-                    </div>
-                  </div>
-                  <p className="text-muted-foreground">
-                    {c.counts.posted} publicados · {c.counts.queued} en cola · {c.counts.failed} fallidos · {c.counts.review} en revisión de admin · total {c.counts.total}
-                    {c.mediaCount > 0 ? ` · ${c.mediaCount} adjunto(s)` : ''}
-                  </p>
-                  <div className="flex gap-1.5">
-                    <Button size="sm" variant="outline" className="h-7 text-xs" disabled={busy} onClick={async () => {
-                      await fetch('/api/fb-campaigns', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ campaignId: c.id, action: 'pause' }) });
-                      setNotice('Campaña pausada'); await load();
-                    }}>
-                      Pausar
-                    </Button>
-                    <Button size="sm" variant="outline" className="h-7 text-xs" disabled={busy} onClick={async () => {
-                      await fetch('/api/fb-campaigns', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ campaignId: c.id, action: 'resume' }) });
-                      setNotice('Campaña reanudada'); await load();
-                    }}>
-                      Reanudar
-                    </Button>
-                    <Button size="sm" variant="destructive" className="h-7 text-xs" disabled={busy} onClick={async () => {
-                      await fetch('/api/fb-campaigns', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ campaignId: c.id, action: 'cancel' }) });
-                      setNotice('Campaña cancelada'); await load();
-                    }}>
-                      Cancelar
-                    </Button>
-                  </div>
-                </div>
-              ))}
+            <div className="space-y-2.5">
+              {campaigns.map((c) => <CampaignRow key={c.id} campaign={c} busy={busy} onChanged={load} setNotice={setNotice} />)}
             </div>
           )}
         </CardContent>
@@ -336,7 +389,7 @@ export function FbGroupsSection({ brandId, refresh }: SectionProps) {
       {/* Anti-ban */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm">Escudo anti-ban</CardTitle>
+          <CardTitle className="flex items-center gap-2 text-sm"><ShieldCheck className="h-4 w-4 text-primary" /> Escudo anti-ban</CardTitle>
           <CardDescription>Warmup 5→10→20/día (posts) y 2→4→6/día (uniones) · pausas 3-10 min entre posts y 20-45 min entre uniones · corte nocturno 22:00-07:00 · pausa de 12 h ante cualquier desafío de Facebook.</CardDescription>
         </CardHeader>
         <CardContent className="text-xs space-y-1.5">
@@ -344,7 +397,7 @@ export function FbGroupsSection({ brandId, refresh }: SectionProps) {
             <p className="text-muted-foreground">Sin alertas registradas.</p>
           ) : (
             alerts.map((a) => (
-              <div key={a.id} className="flex items-center gap-2 flex-wrap border-b pb-1.5">
+              <div key={a.id} className="flex items-center gap-2 flex-wrap border-b pb-1.5 last:border-b-0">
                 <Badge variant={a.kind === 'CHALLENGE' ? 'destructive' : a.kind === 'INFO' ? 'secondary' : 'outline'}>{a.kind}</Badge>
                 <span>{a.message}</span>
                 {a.pausedUntil && <span className="text-muted-foreground">· pausado hasta {new Date(a.pausedUntil).toLocaleString('es-CO')}</span>}
@@ -357,27 +410,122 @@ export function FbGroupsSection({ brandId, refresh }: SectionProps) {
   );
 }
 
-function WorkerForm({ busy, onRegister }: { busy: boolean; onRegister: (payload: { name: string; baseUrl: string; mode: string; sessionAgeDays: number }) => Promise<void> }) {
+// ─── Piezas visuales reutilizables ─────────────────────────────────
+
+function Kpi({ icon: Icon, label, value, sub, progress, tone = 'neutral' }: {
+  icon: typeof Send;
+  label: string;
+  value: string;
+  sub?: string;
+  progress?: number;
+  tone?: 'ok' | 'warn' | 'bad' | 'neutral';
+}) {
+  const toneIcon = tone === 'ok' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300'
+    : tone === 'warn' ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300'
+    : tone === 'bad' ? 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300'
+    : 'bg-primary/10 text-primary';
+  return (
+    <div className="rounded-xl border bg-card p-3.5 transition-shadow hover:shadow-sm">
+      <div className="flex items-center gap-2">
+        <span className={`flex h-7 w-7 items-center justify-center rounded-lg ${toneIcon}`} aria-hidden><Icon className="h-4 w-4" /></span>
+        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+        <p className="ml-auto text-lg font-semibold tabular-nums">{value}</p>
+      </div>
+      {typeof progress === 'number' && (
+        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted" role="progressbar" aria-label={label} aria-valuenow={Math.round(progress * 100)}>
+          <div className={`h-full rounded-full transition-all ${progress >= 1 ? 'bg-red-500' : progress >= 0.8 ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${Math.min(100, Math.max(2, progress * 100))}%` }} />
+        </div>
+      )}
+      {sub && <p className="mt-1.5 truncate text-[11px] text-muted-foreground" title={sub}>{sub}</p>}
+    </div>
+  );
+}
+
+function MiniMeter({ label, used, cap }: { label: string; used: number; cap: number }) {
+  const ratio = cap > 0 ? used / cap : 0;
+  return (
+    <div>
+      <div className="flex justify-between text-[10px] text-muted-foreground">
+        <span>{label}</span>
+        <span className="tabular-nums">{used}/{cap || '—'}</span>
+      </div>
+      <div className="mt-0.5 h-1 overflow-hidden rounded-full bg-muted">
+        <div className={`h-full rounded-full ${ratio >= 1 ? 'bg-red-500' : ratio >= 0.8 ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${Math.min(100, Math.max(2, ratio * 100))}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function GroupsTable({ groups, busy, onToggle }: {
+  groups: FbGroupRow[];
+  busy: boolean;
+  onToggle: (g: FbGroupRow) => Promise<void>;
+}) {
+  const [filter, setFilter] = useState('');
+  const shown = groups.filter((g) => !filter || `${g.name} ${g.collection}`.toLowerCase().includes(filter.toLowerCase()));
+  return (
+    <>
+      <div className="flex gap-2">
+        <Input className="h-8 max-w-xs text-xs" placeholder="Filtrar por nombre o colección…" value={filter} onChange={(e) => setFilter(e.target.value)} />
+        <span className="self-center text-[11px] text-muted-foreground">{shown.length} de {groups.length}</span>
+      </div>
+      <div className="max-h-64 overflow-auto rounded-lg border">
+        <table className="w-full text-xs">
+          <thead className="bg-muted/60 sticky top-0 backdrop-blur">
+            <tr>
+              <th className="p-2 text-left font-medium">Grupo</th>
+              <th className="p-2 text-left font-medium">Colección</th>
+              <th className="p-2 text-left font-medium">Último post</th>
+              <th className="p-2 text-left font-medium">Rotación</th>
+            </tr>
+          </thead>
+          <tbody>
+            {shown.map((g) => (
+              <tr key={g.id} className="border-t transition-colors hover:bg-muted/40">
+                <td className="p-2 max-w-[240px] truncate" title={g.name}>{g.url ? <a href={g.url} target="_blank" rel="noreferrer" className="underline-offset-2 hover:underline">{g.name}</a> : g.name}</td>
+                <td className="p-2"><code className="text-[10px]">{g.collection}</code></td>
+                <td className="p-2 text-muted-foreground">{g.lastPostedAt ? new Date(g.lastPostedAt).toLocaleDateString('es-CO') : '—'}</td>
+                <td className="p-2">
+                  <Button size="sm" variant={g.excluded ? 'destructive' : 'outline'} className="h-6 text-[10px]" disabled={busy} onClick={() => onToggle(g)}>
+                    {g.excluded ? 'Excluido' : 'Activo'}
+                  </Button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
+// ─── Formularios ───────────────────────────────────────────────────
+
+function WorkerForm({ busy, onRegister }: { busy: boolean; onRegister: (payload: { name: string; baseUrl: string; mode: string; sessionAgeDays: number; proxyUrl: string }) => Promise<void> }) {
   const [name, setName] = useState('');
   const [baseUrl, setBaseUrl] = useState('http://localhost:8765');
   const [mode, setMode] = useState('pc');
   const [sessionAgeDays, setSessionAgeDays] = useState('30');
+  const [proxyUrl, setProxyUrl] = useState('');
   return (
-    <div className="flex flex-wrap gap-2 items-center text-xs">
-      <Input className="h-8 w-36 text-xs" placeholder="Nombre" value={name} onChange={(e) => setName(e.target.value)} />
-      <Input className="h-8 w-56 text-xs" placeholder="URL del worker" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} />
-      <Select value={mode} onValueChange={setMode}>
-        <SelectTrigger className="h-8 w-36 text-xs"><SelectValue /></SelectTrigger>
-        <SelectContent>
-          <SelectItem value="pc">PC local</SelectItem>
-          <SelectItem value="vps">VPS 24/7</SelectItem>
-        </SelectContent>
-      </Select>
-      <Input className="h-8 w-28 text-xs" type="number" min={0} placeholder="Días de cuenta" value={sessionAgeDays} onChange={(e) => setSessionAgeDays(e.target.value)} />
-      <Button size="sm" className="h-8 text-xs" disabled={busy || !name || !baseUrl}
-        onClick={async () => { await onRegister({ name, baseUrl, mode, sessionAgeDays: Number(sessionAgeDays) }); setName(''); }}>
-        Registrar worker
-      </Button>
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-2 items-center text-xs">
+        <Input className="h-8 w-36 text-xs" placeholder="Nombre" value={name} onChange={(e) => setName(e.target.value)} />
+        <Input className="h-8 w-56 text-xs" placeholder="URL del worker" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} />
+        <Select value={mode} onValueChange={setMode}>
+          <SelectTrigger className="h-8 w-36 text-xs"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="pc">PC local</SelectItem>
+            <SelectItem value="vps">VPS 24/7</SelectItem>
+          </SelectContent>
+        </Select>
+        <Input className="h-8 w-28 text-xs" type="number" min={0} placeholder="Días de cuenta" value={sessionAgeDays} onChange={(e) => setSessionAgeDays(e.target.value)} />
+        <Button size="sm" className="h-8 text-xs" disabled={busy || !name || !baseUrl}
+          onClick={async () => { await onRegister({ name, baseUrl, mode, sessionAgeDays: Number(sessionAgeDays), proxyUrl: proxyUrl.trim() }); setName(''); setProxyUrl(''); }}>
+          Registrar worker
+        </Button>
+      </div>
+      <Input className="h-8 max-w-md text-xs" placeholder="Proxy (opcional): http://host:8080 o socks5://host:1080 — recuerda configurarlo también en el .env del worker" value={proxyUrl} onChange={(e) => setProxyUrl(e.target.value)} />
     </div>
   );
 }
@@ -422,23 +570,87 @@ function JoinForm({ busy, onCreate }: { busy: boolean; onCreate: (payload: { url
   );
 }
 
-function CampaignForm({ busy, brandId, groups, onCreate }: {
+/** Gauge de riesgo pre-vuelo: se recalcula en vivo con cada cambio del formulario. */
+function RiskGauge({ input, hasWorker }: { input: RiskInput; hasWorker: boolean }) {
+  const risk: RiskResult = useMemo(() => computeRiskScore(input), [input]);
+  const barColor = risk.level === 'BAJO' ? 'bg-emerald-500' : risk.level === 'MEDIO' ? 'bg-amber-500' : 'bg-red-500';
+  return (
+    <div className="rounded-lg border bg-muted/30 p-3 text-xs" aria-live="polite">
+      <div className="flex items-center gap-2">
+        <ShieldCheck className="h-4 w-4 text-muted-foreground" aria-hidden />
+        <b className="text-[13px]">Riesgo pre-vuelo</b>
+        <span className={`ml-1 text-base font-semibold tabular-nums ${risk.level === 'ALTO' ? 'text-red-700 dark:text-red-300' : risk.level === 'MEDIO' ? 'text-amber-700 dark:text-amber-300' : 'text-emerald-700 dark:text-emerald-300'}`}>{risk.score}</span>
+        <span className="text-muted-foreground">/100</span>
+        <span className={`ml-auto ${RISK_CHIP[risk.level]}`}>{risk.level}</span>
+      </div>
+      <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
+        <div className={`h-full rounded-full transition-all duration-300 ${barColor}`} style={{ width: `${Math.max(2, risk.score)}%` }} />
+      </div>
+      {!hasWorker && (
+        <p className="mt-2 text-[11px] text-amber-700 dark:text-amber-300">Sin workers registrados: se evalúa el peor caso (cuenta de 0 días). Registra un worker para una evaluación real.</p>
+      )}
+      {risk.factors.length > 0 && (
+        <ul className="mt-2 space-y-1">
+          {risk.factors.map((f) => (
+            <li key={f.label} className="flex gap-1.5 leading-snug">
+              <span className={`shrink-0 tabular-nums font-medium ${f.points < 0 ? 'text-emerald-700 dark:text-emerald-300' : f.points >= 10 ? 'text-red-700 dark:text-red-300' : 'text-amber-700 dark:text-amber-300'}`}>
+                {f.points > 0 ? `+${f.points}` : f.points}
+              </span>
+              <span><b>{f.label}.</b> <span className="text-muted-foreground">{f.note}</span></span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {risk.mitigations.length > 0 && (
+        <p className="mt-2 border-t pt-1.5 text-[11px] text-muted-foreground">Cómo bajarlo: {risk.mitigations.join(' · ')}</p>
+      )}
+    </div>
+  );
+}
+
+function CampaignForm({ busy, brandId, groups, workers, onCreate }: {
   busy: boolean; brandId: string | null;
   groups: FbGroupRow[];
+  workers: FbWorkerRow[];
   onCreate: (payload: Record<string, unknown>) => Promise<void>;
 }) {
   const [name, setName] = useState('');
   const [text, setText] = useState('');
   const [mode, setMode] = useState('group');
   const [firstComment, setFirstComment] = useState('');
+  const [commentDelaySec, setCommentDelaySec] = useState('0');
   const [media, setMedia] = useState('');
+  const [rotate, setRotate] = useState(false);
+  const [boldStyle, setBoldStyle] = useState('none');
   const [windowStart, setWindowStart] = useState('7');
   const [windowEnd, setWindowEnd] = useState('21');
   const [selected, setSelected] = useState<string[]>([]);
   const active = groups.filter((g) => !g.excluded);
   const mediaUrls = media.split('\n').map((s) => s.trim()).filter(Boolean).slice(0, 4);
+
+  // Riesgo en vivo: peor caso = worker más joven (mismas reglas que el servidor).
+  const riskInput = useMemo(() => {
+    const mediaList = media.split('\n').map((s) => s.trim()).filter(Boolean).slice(0, 4);
+    return riskInputFromCampaign(
+      {
+        text,
+        mediaUrls: JSON.stringify(mediaList),
+        firstComment,
+        windowStart: Number(windowStart) || 7,
+        windowEnd: Number(windowEnd) || 21,
+        targetCount: mode === 'profile' ? 1 : selected.length,
+      },
+      (() => {
+        const youngest = [...workers].sort((a, b) => a.sessionAgeDays - b.sessionAgeDays)[0];
+        if (!youngest) return null;
+        return { sessionAgeDays: youngest.sessionAgeDays, usedToday: youngest.usage?.postsToday ?? 0, cap: youngest.usage?.cap ?? 0 };
+      })(),
+    );
+  }, [text, media, firstComment, windowStart, windowEnd, mode, selected, workers]);
+  const hasWorker = workers.length > 0;
+
   return (
-    <div className="space-y-2 text-xs">
+    <div className="space-y-3 text-xs">
       <div className="flex flex-wrap gap-2">
         <Input className="h-8 w-48 text-xs" placeholder="Nombre de campaña" value={name} onChange={(e) => setName(e.target.value)} />
         <Select value={mode} onValueChange={setMode}>
@@ -449,37 +661,156 @@ function CampaignForm({ busy, brandId, groups, onCreate }: {
             <SelectItem value="page_in_group">Como Página en grupos</SelectItem>
           </SelectContent>
         </Select>
-        <Input className="h-8 w-24 text-xs" type="number" min={0} max={23} value={windowStart} onChange={(e) => setWindowStart(e.target.value)} title="Hora inicio ventana" />
-        <span className="self-center">a</span>
-        <Input className="h-8 w-24 text-xs" type="number" min={0} max={23} value={windowEnd} onChange={(e) => setWindowEnd(e.target.value)} title="Hora fin ventana" />
+        <label className="flex items-center gap-1 text-muted-foreground">
+          Ventana
+          <Input className="h-8 w-16 text-xs" type="number" min={0} max={23} value={windowStart} onChange={(e) => setWindowStart(e.target.value)} aria-label="Hora inicio ventana" />
+          <span>a</span>
+          <Input className="h-8 w-16 text-xs" type="number" min={0} max={23} value={windowEnd} onChange={(e) => setWindowEnd(e.target.value)} aria-label="Hora fin ventana" />
+        </label>
       </div>
-      <Textarea className="text-xs min-h-[72px]" placeholder="Texto base del post (aprobado o del operador). {Spintax|opcional} soportado." value={text} onChange={(e) => setText(e.target.value)} />
+      <Textarea className="text-xs min-h-[72px]" placeholder="Texto base del post (aprobado o del operador). {Spintax|opcional} soportado; con énfasis unicode puedes marcar *palabras clave*." value={text} onChange={(e) => setText(e.target.value)} />
       <Textarea className="text-xs min-h-[48px]" placeholder="Adjuntos (opcional): una imagen por línea, máx 4. URL http(s) accesible por el worker o ruta local de su máquina." value={media} onChange={(e) => setMedia(e.target.value)} />
-      <Input className="h-8 text-xs" placeholder="Primer comentario (opcional, p.ej. el enlace)" value={firstComment} onChange={(e) => setFirstComment(e.target.value)} />
+      <div className="flex flex-wrap gap-x-4 gap-y-2">
+        <label className={`flex items-center gap-1.5 ${mediaUrls.length > 1 ? '' : 'opacity-50'}`} title={mediaUrls.length > 1 ? 'Cada grupo recibe una imagen distinta del pool (rotación determinista)' : 'Necesitas 2+ adjuntos para rotar'}>
+          <input type="checkbox" checked={rotate} disabled={mediaUrls.length <= 1} onChange={(e) => setRotate(e.target.checked)} />
+          <ImageIcon className="h-3.5 w-3.5" aria-hidden /> Rotar adjuntos ({mediaUrls.length > 1 ? '1 distinta por grupo' : 'requiere 2+'})
+        </label>
+        <label className="flex items-center gap-1.5">
+          <Select value={boldStyle} onValueChange={setBoldStyle}>
+            <SelectTrigger className="h-7 w-44 text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">Énfasis: ninguno</SelectItem>
+              <SelectItem value="unicode">Énfasis: negrita unicode (*así*)</SelectItem>
+            </SelectContent>
+          </Select>
+        </label>
+      </div>
+      <div className="flex flex-wrap gap-2 items-center">
+        <Input className="h-8 max-w-md text-xs" placeholder="Primer comentario (opcional, p.ej. el enlace)" value={firstComment} onChange={(e) => setFirstComment(e.target.value)} />
+        <label className="flex items-center gap-1 text-muted-foreground" title="El worker espera este tiempo (±15% de jitter humano) antes de publicar el comentario">
+          <MessageCircle className="h-3.5 w-3.5" aria-hidden />
+          Espera
+          <Input className="h-8 w-20 text-xs" type="number" min={0} max={3600} step={30} value={commentDelaySec} onChange={(e) => setCommentDelaySec(e.target.value)} />
+          s
+        </label>
+        {Number(commentDelaySec) > 0 && <span className="text-[11px] text-muted-foreground">bump-comment con delay (recomendado 60-300 s)</span>}
+      </div>
       {mode !== 'profile' && (
-        <div className="max-h-32 overflow-auto rounded border p-2 space-y-1">
+        <div className="max-h-36 overflow-auto rounded-lg border p-2 space-y-1">
           {active.length === 0 ? (
             <p className="text-muted-foreground">Importa grupos primero.</p>
           ) : active.map((g) => (
-            <label key={g.id} className="flex items-center gap-2">
+            <label key={g.id} className="flex items-center gap-2 hover:bg-muted/50 rounded px-1 py-0.5">
               <input type="checkbox" checked={selected.includes(g.id)} onChange={(e) => setSelected((s) => e.target.checked ? [...s, g.id] : s.filter((x) => x !== g.id))} />
-              <span>{g.name} <code className="text-[10px] text-muted-foreground">{g.collection}</code></span>
+              <span className="truncate">{g.name} <code className="text-[10px] text-muted-foreground">{g.collection}</code></span>
             </label>
           ))}
         </div>
       )}
+      <RiskGauge input={riskInput} hasWorker={hasWorker} />
       <Button size="sm" className="h-8 text-xs" disabled={busy || !name || !text || (mode !== 'profile' && selected.length === 0)}
         onClick={async () => {
           await onCreate({
             brandId, name, text, mode, engine: 'dom', firstComment,
+            commentDelaySec: Math.max(0, Number(commentDelaySec) || 0),
+            boldStyle,
             mediaUrls,
+            mediaMode: rotate && mediaUrls.length > 1 ? 'rotate' : 'all',
             windowStart: Number(windowStart), windowEnd: Number(windowEnd),
             targets: mode === 'profile' ? [] : selected,
           });
-          setName(''); setText(''); setFirstComment(''); setMedia(''); setSelected([]);
+          setName(''); setText(''); setFirstComment(''); setMedia(''); setSelected([]); setRotate(false); setCommentDelaySec('0');
         }}>
-        Crear campaña ({mode === 'profile' ? 1 : selected.length} objetivo{mode === 'profile' ? '' : 's'}{mediaUrls.length ? ` · ${mediaUrls.length} adjunto${mediaUrls.length > 1 ? 's' : ''}` : ''})
+        Crear campaña ({mode === 'profile' ? 1 : selected.length} objetivo{mode === 'profile' ? '' : 's'}{mediaUrls.length ? ` · ${mediaUrls.length} adjunto${mediaUrls.length > 1 ? 's' : ''}${rotate && mediaUrls.length > 1 ? ' rotados' : ''}` : ''})
       </Button>
+    </div>
+  );
+}
+
+function CampaignRow({ campaign, busy, onChanged, setNotice }: {
+  campaign: FbCampaignRow;
+  busy: boolean;
+  onChanged: () => Promise<void>;
+  setNotice: (n: { msg: string; ok: boolean } | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const c = campaign;
+  const postedRatio = c.counts.total > 0 ? c.counts.posted / c.counts.total : 0;
+  return (
+    <div className="rounded-lg border p-3 text-xs space-y-2 transition-colors hover:border-primary/30">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap min-w-0">
+          <b className="text-[13px]">{c.name}</b>
+          {c.riskLevel && <span className={RISK_CHIP[c.riskLevel] ?? CHIP_NEUTRAL} title="Score de riesgo pre-vuelo (instantánea al crear)">riesgo {c.riskScore} · {c.riskLevel}</span>}
+          <span className={CHIP_NEUTRAL}>{c.mode === 'profile' ? 'perfil' : c.mode === 'page_in_group' ? 'Página en grupo' : 'grupos'}</span>
+          <Badge variant={c.status === 'DONE' ? 'default' : c.status === 'CANCELLED' || c.status === 'PAUSED' ? 'destructive' : 'secondary'}>{c.status}</Badge>
+        </div>
+        <Button size="sm" variant="ghost" className="h-7 text-[11px] gap-1" onClick={() => setOpen(!open)} aria-expanded={open}>
+          {open ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+          Log de entrega ({c.counts.total})
+        </Button>
+      </div>
+      {/* Progreso visual de la campaña */}
+      <div className="flex h-1.5 overflow-hidden rounded-full bg-muted" aria-hidden>
+        <div className="bg-emerald-500" style={{ width: `${(c.counts.posted / Math.max(1, c.counts.total)) * 100}%` }} />
+        <div className="bg-amber-400" style={{ width: `${(c.counts.review / Math.max(1, c.counts.total)) * 100}%` }} />
+        <div className="bg-red-400" style={{ width: `${(c.counts.failed / Math.max(1, c.counts.total)) * 100}%` }} />
+      </div>
+      <p className="text-muted-foreground flex flex-wrap gap-x-2 gap-y-0.5">
+        <span>{c.counts.posted} publicados</span>· <span>{c.counts.queued} en cola</span>· <span>{c.counts.failed} fallidos</span>· <span>{c.counts.review} en revisión de admin</span>· <span>total {c.counts.total}</span>
+        {c.mediaCount > 0 && <>· <span>{c.mediaCount} adjunto(s){c.mediaMode === 'rotate' ? ' rotados por grupo' : ''}</span></>}
+        {c.boldStyle === 'unicode' && <>· <span>negrita unicode</span></>}
+        {c.commentDelaySec > 0 && <>· <span>comentario tras {c.commentDelaySec}s</span></>}
+      </p>
+      {open && (
+        <div className="max-h-72 overflow-auto rounded-lg border">
+          <table className="w-full text-xs">
+            <thead className="bg-muted/60 sticky top-0 backdrop-blur">
+              <tr>
+                <th className="p-2 text-left font-medium">Grupo</th>
+                <th className="p-2 text-left font-medium">Estado</th>
+                <th className="p-2 text-left font-medium">Variante</th>
+                <th className="p-2 text-left font-medium">Publicado</th>
+                <th className="p-2 text-left font-medium">Detalle</th>
+              </tr>
+            </thead>
+            <tbody>
+              {c.jobs.map((j) => (
+                <tr key={j.id} className="border-t transition-colors hover:bg-muted/40">
+                  <td className="p-2 max-w-[180px] truncate" title={j.targetName}>{j.targetName}</td>
+                  <td className="p-2"><span className={JOB_STATUS_CHIP[j.status] ?? CHIP_NEUTRAL}>{JOB_STATUS_LABEL[j.status] ?? j.status}</span></td>
+                  <td className="p-2 text-muted-foreground">{j.variantSource}</td>
+                  <td className="p-2 text-muted-foreground">{j.postedAt ? new Date(j.postedAt).toLocaleString('es-CO') : '—'}</td>
+                  <td className="p-2 max-w-[240px] truncate text-muted-foreground" title={j.failReason}>
+                    {j.postUrl ? <a href={j.postUrl} target="_blank" rel="noreferrer" className="text-primary underline-offset-2 hover:underline">ver post</a> : j.failReason || (j.workerName ? `worker: ${j.workerName}` : '—')}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <div className="flex gap-1.5">
+        <Button size="sm" variant="outline" className="h-7 text-xs" disabled={busy} onClick={async () => {
+          await fetch('/api/fb-campaigns', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ campaignId: c.id, action: 'pause' }) });
+          setNotice({ msg: 'Campaña pausada', ok: true }); await onChanged();
+        }}>
+          Pausar
+        </Button>
+        <Button size="sm" variant="outline" className="h-7 text-xs" disabled={busy} onClick={async () => {
+          await fetch('/api/fb-campaigns', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ campaignId: c.id, action: 'resume' }) });
+          setNotice({ msg: 'Campaña reanudada', ok: true }); await onChanged();
+        }}>
+          Reanudar
+        </Button>
+        <Button size="sm" variant="destructive" className="h-7 text-xs" disabled={busy} onClick={async () => {
+          await fetch('/api/fb-campaigns', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ campaignId: c.id, action: 'cancel' }) });
+          setNotice({ msg: 'Campaña cancelada', ok: true }); await onChanged();
+        }}>
+          Cancelar
+        </Button>
+        {postedRatio === 1 && c.counts.total > 0 && <span className={`ml-auto self-center ${CHIP_OK}`} title="Todos los jobs en estado terminal">completa</span>}
+      </div>
     </div>
   );
 }

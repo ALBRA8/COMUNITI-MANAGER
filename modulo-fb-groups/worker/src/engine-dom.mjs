@@ -4,6 +4,8 @@
 // advertencia el worker se detiene y reporta (nunca se fuerza un envío dudoso).
 // P1: adjuntos de imagen (hasta 4) — si no se pueden adjuntar, NO se publica
 // un post distinto al aprobado: fallo honesto ADJUNTO_FALLIDO.
+// P7: proxy opcional por worker (FB_PROXY) — el Chrome completo sale por ahí;
+// si el proxy cae, el fallo es honesto y visible, nunca un retry ciego.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -14,16 +16,28 @@ const PROFILE_DIR = process.env.FB_PROFILE_DIR ?? './chrome-profile';
 const HEADFUL = (process.env.FB_HEADFUL ?? '1') !== '0';
 const TYPING_MIN_MS = Number(process.env.FB_TYPE_MIN_MS ?? 45);
 const TYPING_MAX_MS = Number(process.env.FB_TYPE_MAX_MS ?? 160);
+const PROXY_SERVER = process.env.FB_PROXY ?? ''; // p.ej. http://proxy.local:8080 o socks5://host:1080
+const PROXY_USERNAME = process.env.FB_PROXY_USERNAME ?? '';
+const PROXY_PASSWORD = process.env.FB_PROXY_PASSWORD ?? '';
 
 let context = null;
 
 export async function ensureBrowser() {
   if (context) return context;
   const { chromium } = await import('playwright');
+  const proxy = PROXY_SERVER
+    ? {
+        server: PROXY_SERVER,
+        ...(PROXY_USERNAME ? { username: PROXY_USERNAME } : {}),
+        ...(PROXY_PASSWORD ? { password: PROXY_PASSWORD } : {}),
+      }
+    : undefined;
+  if (proxy) console.log(`[proxy] Chrome saldrá por ${PROXY_SERVER.replace(/\/\/[^@/]+@/, '//•••@')}`);
   context = await chromium.launchPersistentContext(PROFILE_DIR, {
     channel: 'chrome', // Chrome real del sistema (no Chromium desnudo)
     headless: !HEADFUL,
     viewport: null,
+    ...(proxy ? { proxy } : {}),
     args: ['--disable-blink-features=AutomationControlled', '--start-maximized'],
   });
   return context;

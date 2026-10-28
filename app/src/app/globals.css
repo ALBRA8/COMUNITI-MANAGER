@@ -119,4 +119,34 @@
   body {
     @apply bg-background text-foreground;
   }
+
+  /* Scrollbars finos y discretos (Firefox + WebKit) */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: oklch(0.556 0 0 / 0.3) transparent;
+  }
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: oklch(0.556 0 0 / 0.3);
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: oklch(0.556 0 0 / 0.5);
+  }
+
+  /* Selección de texto coherente con la paleta neutra */
+  ::selection {
+    background: oklch(0.205 0 0 / 0.85);
+    color: oklch(0.985 0 0);
+  }
+  .dark ::selection {
+    background: oklch(0.922 0 0 / 0.9);
+    color: oklch(0.205 0 0);
+  }
 }

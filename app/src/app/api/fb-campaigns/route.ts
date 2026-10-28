@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { computeCap, todayKey } from '@/lib/fb-groups';
+import { computeRiskScore, riskInputFromCampaign } from '@/lib/fb-risk';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,7 +10,10 @@ export async function GET() {
   const campaigns = await db.fbCampaign.findMany({
     orderBy: { createdAt: 'desc' },
     include: {
-      jobs: { select: { id: true, status: true, targetName: true, targetKind: true, variantSource: true, postUrl: true, failReason: true, postedAt: true } },
+      jobs: {
+        select: { id: true, status: true, targetName: true, targetKind: true, variantSource: true, postUrl: true, failReason: true, postedAt: true, attempts: true, worker: { select: { name: true } } },
+        orderBy: { createdAt: 'asc' },
+      },
     },
   });
   const summary = campaigns.map((c) => {
@@ -24,7 +29,7 @@ export async function GET() {
       failed: c.jobs.filter((j) => j.status === 'FAILED').length,
       review: c.jobs.filter((j) => j.status === 'PENDING_REVIEW').length,
     },
-    jobs: undefined,
+    jobs: c.jobs.map((j) => ({ ...j, workerName: j.worker?.name ?? null, worker: undefined })),
     };
   });
   return NextResponse.json({ campaigns: summary });
@@ -59,6 +64,9 @@ export async function POST(req: NextRequest) {
     }
   }
   const mediaUrls = JSON.stringify(mediaList);
+  const mediaMode = body.mediaMode === 'rotate' ? 'rotate' : 'all';
+  const boldStyle = body.boldStyle === 'unicode' ? 'unicode' : 'none';
+  const commentDelaySec = Math.max(0, Math.min(3600, Number.isFinite(body.commentDelaySec) ? Number(body.commentDelaySec) : 0));
 
   const groups = targets.length > 0
     ? await db.fbGroup.findMany({ where: { id: { in: targets }, excluded: false } })
@@ -67,6 +75,18 @@ export async function POST(req: NextRequest) {
   if (mode !== 'profile' && groups.length === 0) {
     return NextResponse.json({ error: 'Ningún objetivo válido (¿excluidos?)' }, { status: 400 });
   }
+
+  // Score de riesgo pre-vuelo (roadmap #1): peor caso entre workers registrados
+  // (la cuenta más joven manda). Instantánea honesta, no una promesa.
+  const day = todayKey();
+  const workersForRisk = await db.fbWorker.findMany({ orderBy: { sessionAgeDays: 'asc' } });
+  const usagesForRisk = await db.fbDailyUsage.findMany({ where: { day } });
+  const youngest = workersForRisk[0] ?? null;
+  const riskInput = riskInputFromCampaign(
+    { text: String(body.text), mediaUrls, firstComment: String(body.firstComment ?? ''), windowStart: Number.isFinite(body.windowStart) ? Number(body.windowStart) : 7, windowEnd: Number.isFinite(body.windowEnd) ? Number(body.windowEnd) : 21, targetCount: mode === 'profile' ? 1 : groups.length },
+    youngest ? { sessionAgeDays: youngest.sessionAgeDays, usedToday: usagesForRisk.find((u) => u.workerId === youngest.id)?.posts ?? 0, cap: computeCap(youngest.sessionAgeDays) } : null,
+  );
+  const risk = computeRiskScore(riskInput);
 
   const campaign = await db.fbCampaign.create({
     data: {
@@ -81,6 +101,11 @@ export async function POST(req: NextRequest) {
       windowStart: Number.isFinite(body.windowStart) ? Number(body.windowStart) : 7,
       windowEnd: Number.isFinite(body.windowEnd) ? Number(body.windowEnd) : 21,
       mediaUrls,
+      mediaMode,
+      boldStyle,
+      commentDelaySec,
+      riskScore: risk.score,
+      riskLevel: risk.level,
     },
   });
 
@@ -93,10 +118,10 @@ export async function POST(req: NextRequest) {
   }
 
   await db.auditEntry.create({
-    data: { actor: 'human', action: 'FB_CAMPAIGN_CREATED', targetType: 'FB_CAMPAIGN', targetId: campaign.id, allowed: true, reason: `Campaña "${campaign.name}" con ${mode === 'profile' ? 1 : groups.length} objetivo(s), motor ${engine}, ventana ${campaign.windowStart}-${campaign.windowEnd}${mediaList.length ? `, ${mediaList.length} adjunto(s)` : ''}` },
+    data: { actor: 'human', action: 'FB_CAMPAIGN_CREATED', targetType: 'FB_CAMPAIGN', targetId: campaign.id, allowed: true, reason: `Campaña "${campaign.name}" con ${mode === 'profile' ? 1 : groups.length} objetivo(s), motor ${engine}, ventana ${campaign.windowStart}-${campaign.windowEnd}${mediaList.length ? `, ${mediaList.length} adjunto(s)${mediaMode === 'rotate' ? ' rotados' : ''}` : ''}${commentDelaySec ? `, bump-comment con ${commentDelaySec}s de espera` : ''}${boldStyle === 'unicode' ? ', negrita unicode' : ''} · riesgo pre-vuelo ${risk.score} (${risk.level})` },
   });
 
-  return NextResponse.json({ campaign: { id: campaign.id, name: campaign.name }, jobs: mode === 'profile' ? 1 : groups.length });
+  return NextResponse.json({ campaign: { id: campaign.id, name: campaign.name }, jobs: mode === 'profile' ? 1 : groups.length, risk: { score: risk.score, level: risk.level, factors: risk.factors, mitigations: risk.mitigations } });
 }
 
 export async function PATCH(req: NextRequest) {

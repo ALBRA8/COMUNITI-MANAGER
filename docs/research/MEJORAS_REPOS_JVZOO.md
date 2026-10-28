@@ -65,16 +65,27 @@ SaaS ya ofrecen freemium; no perdemos nada por no haberlos catalogado.
 
 ## E. Top 10 mejoras propuestas (valor/esfuerzo, post-P6)
 
-1. **Score de riesgo 0-100 pre-vuelo** (reusa warmup+auditoría que ya tenemos) — bajo esfuerzo, alto valor
-2. **Log de entrega por grupo** con "pending admin approval" visible → cimiento de analítica
-3. **Rotación de adjuntos** entre jobs de la misma campaña (extiende mediaUrls de P5)
-4. **Bump-comment con delay** (extiende el primer comentario de P3)
-5. **Triage de comentarios** estilo Lead Radar → evaluar integración con AGENTE-CHISMOSO antes de duplicar
-6. **Escalado graduado codificado** (10-15 → 20-25/día según semanas limpias)
-7. **Gap mínimo adaptativo por volumen 24 h** (15→60 s) sobre nuestro warmup
-8. **RSS→campaña recurrente** con HITL
-9. **Reporte exportable por marca** (reusa multi-marca + auditoría append-only)
-10. **Packaging desktop con auto-update** para clientes no-técnicos (Electron, blueprint phantakanxm)
+> Actualización P7 (28-10-2026): los items 1-4 y los 2 gaps menores de paridad
+> (unicode bold, proxy por cuenta) están **hechos y verificados** (test E2E
+> 25/25 + regresiones 11/11 y 24/24 + navegador). El item 7 (gap adaptativo por
+> volumen) ya está **superado de serie**: nuestros huecos son de 3-10 MINUTOS,
+> muy por encima del peor caso de GroupPosting (60 s). El item 6 (escalado
+> graduado) lo cubre el techo por warmup 5/10/20 más el gauge de riesgo, que
+> penaliza lotes grandes.
+
+1. ✅ **Score de riesgo 0-100 pre-vuelo** (reusa warmup+auditoría que ya tenemos) — hecho en P7: factores deterministas, mitigaciones, instantánea persistida, gauge en vivo
+2. ✅ **Log de entrega por grupo** con "pending admin approval" visible → hecho en P7: tabla expandible por campaña (PENDING_REVIEW visible, postUrl, motivo, worker)
+3. ✅ **Rotación de adjuntos** entre jobs de la misma campaña — hecho en P7: mediaMode=rotate, rotación determinista por job
+4. ✅ **Bump-comment con delay** — hecho en P7: commentDelaySec ±15% de jitter en el worker
+5. **Triage de comentarios** estilo Lead Radar → evaluar integración con AGENTE-CHISMOSO antes de duplicar (pendiente de decisión de integración)
+6. ✅ **Escalado graduado codificado** — cubierto: techo warmup 5/10/20 + factor "lote grande" del score de riesgo
+7. ✅ **Gap mínimo adaptativo por volumen 24 h** — superado de serie: 3-10 min >> 60 s
+8. **RSS→campaña recurrente** con HITL (roadmap futuro)
+9. **Reporte exportable por marca** (reusa multi-marca + auditoría append-only; roadmap futuro)
+10. **Packaging desktop con auto-update** para clientes no-técnicos (Electron, blueprint phantakanxm; roadmap futuro)
+
+Gaps menores de paridad cerrados en P7: negrita unicode por segmentos *marcados*
+y proxy por cuenta (FB_PROXY en el worker, declarado enmascarado en el panel).
 
 ## F. Riesgos y noticias
 

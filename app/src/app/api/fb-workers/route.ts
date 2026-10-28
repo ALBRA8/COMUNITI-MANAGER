@@ -2,19 +2,40 @@ import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { db } from '@/lib/db';
 import { syncRegistry } from '@/lib/registry';
+import { maskProxy, isValidProxyUrl } from '@/lib/fb-risk';
+import { todayKey, computeCap, computeJoinCap } from '@/lib/fb-groups';
 
 export const dynamic = 'force-dynamic';
 
 // Registro y ciclo de vida de workers FB-GROUPS (el Chrome que publica).
 export async function GET() {
-  const [workers, alerts] = await Promise.all([
+  const [workers, alerts, usages] = await Promise.all([
     db.fbWorker.findMany({
-      select: { id: true, name: true, baseUrl: true, mode: true, status: true, lastSeenAt: true, sessionAgeDays: true, createdAt: true },
+      select: { id: true, name: true, baseUrl: true, mode: true, status: true, lastSeenAt: true, sessionAgeDays: true, proxyUrl: true, createdAt: true },
       orderBy: { createdAt: 'asc' },
     }),
     db.fbAlert.findMany({ orderBy: { createdAt: 'desc' }, take: 20 }),
+    db.fbDailyUsage.findMany({ where: { day: todayKey() } }),
   ]);
-  return NextResponse.json({ workers, alerts });
+  const usageByWorker = new Map(usages.map((u) => [u.workerId, u]));
+  return NextResponse.json({
+    workers: workers.map((w) => {
+      const usage = usageByWorker.get(w.id);
+      return {
+        ...w,
+        proxyMasked: maskProxy(w.proxyUrl), // credenciales del proxy nunca salen del chaleco
+        proxyConfigured: Boolean(w.proxyUrl),
+        proxyUrl: undefined,
+        usage: {
+          postsToday: usage?.posts ?? 0,
+          cap: computeCap(w.sessionAgeDays),
+          joinsToday: usage?.joins ?? 0,
+          joinCap: computeJoinCap(w.sessionAgeDays),
+        },
+      };
+    }),
+    alerts,
+  });
 }
 
 export async function POST(req: NextRequest) {
@@ -24,13 +45,17 @@ export async function POST(req: NextRequest) {
 
   if (body.action === 'register') {
     if (!body.name || !body.baseUrl) return NextResponse.json({ error: 'name y baseUrl requeridos' }, { status: 400 });
+    const proxyUrl = body.proxyUrl ? String(body.proxyUrl).trim() : '';
+    if (proxyUrl && !isValidProxyUrl(proxyUrl)) {
+      return NextResponse.json({ error: 'proxyUrl inválido: usa http(s):// o socks5:// (credenciales solo en el .env del worker)' }, { status: 400 });
+    }
     const secret = crypto.randomBytes(32).toString('hex');
     const worker = await db.fbWorker.upsert({
       where: { baseUrl: String(body.baseUrl) },
-      create: { name: String(body.name), baseUrl: String(body.baseUrl), mode: body.mode === 'vps' ? 'vps' : 'pc', secret, sessionAgeDays: Number(body.sessionAgeDays ?? 30) },
-      update: { name: String(body.name), mode: body.mode === 'vps' ? 'vps' : 'pc', secret, sessionAgeDays: Number(body.sessionAgeDays ?? 30) },
+      create: { name: String(body.name), baseUrl: String(body.baseUrl), mode: body.mode === 'vps' ? 'vps' : 'pc', secret, sessionAgeDays: Number(body.sessionAgeDays ?? 30), proxyUrl },
+      update: { name: String(body.name), mode: body.mode === 'vps' ? 'vps' : 'pc', secret, sessionAgeDays: Number(body.sessionAgeDays ?? 30), proxyUrl },
     });
-    await db.auditEntry.create({ data: { actor: 'human', action: 'FB_WORKER_REGISTERED', targetType: 'FB_WORKER', targetId: worker.id, allowed: true, reason: `Worker "${worker.name}" registrado (${worker.mode}). Secreto mostrado una sola vez.` } });
+    await db.auditEntry.create({ data: { actor: 'human', action: 'FB_WORKER_REGISTERED', targetType: 'FB_WORKER', targetId: worker.id, allowed: true, reason: `Worker "${worker.name}" registrado (${worker.mode}${proxyUrl ? ', proxy declarado' : ''}). Secreto mostrado una sola vez.` } });
     await syncRegistry();
     return NextResponse.json({ worker: { id: worker.id, name: worker.name, baseUrl: worker.baseUrl, mode: worker.mode }, secret });
   }

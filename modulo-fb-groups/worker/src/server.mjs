@@ -109,9 +109,17 @@ async function tick({ manual = false } = {}) {
     result = { status: 'FAILED', failReason: `Error del motor: ${e.message}` };
   }
 
-  // 5) Primer comentario (mejor esfuerzo)
+  // 5) Primer comentario (mejor esfuerzo) — bump-comment con delay: la campaña
+  // define commentDelaySec; si es > 0 esperamos ese valor ±15% de jitter humano.
   let commentDone = false;
   if (result.status === 'POSTED' && job.firstComment && result.postUrl) {
+    const baseSec = Number.isFinite(job.commentDelaySec) ? Math.max(0, Math.min(3600, Number(job.commentDelaySec))) : 0;
+    if (baseSec > 0) {
+      const jitter = 1 + (Math.random() * 0.3 - 0.15); // ±15%
+      const waitMs = Math.round(baseSec * 1000 * jitter);
+      console.log(`[comment] esperando ${(waitMs / 1000).toFixed(0)} s antes del primer comentario (delay ${baseSec} s ±15%)`);
+      await new Promise((r) => setTimeout(r, waitMs));
+    }
     commentDone = await engine.firstComment(job, result.postUrl).catch(() => false);
   }
 

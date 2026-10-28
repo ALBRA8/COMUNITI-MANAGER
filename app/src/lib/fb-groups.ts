@@ -5,6 +5,7 @@
 
 import crypto from 'crypto';
 import { db } from '@/lib/db';
+import { applyUnicodeBold, pickRotatedMedia } from '@/lib/fb-risk';
 
 // ─── HMAC por worker (comparación en tiempo constante) ─────────────
 
@@ -119,9 +120,12 @@ export async function generateVariant(
   seedKey: string,
   autonomy: string,
   brandContext: string | null,
+  boldStyle: string | null = 'none',
 ): Promise<{ text: string; source: 'base' | 'spintax' | 'ai_rewrite' }> {
   const spinned = spinDeterministic(baseText, seedKey);
-  if (autonomy === 'L1_ASSISTED') return { text: spinned, source: 'spintax' };
+  if (autonomy === 'L1_ASSISTED') {
+    return { text: boldStyle === 'unicode' ? applyUnicodeBold(spinned) : spinned, source: 'spintax' };
+  }
 
   // L2/L3: reescritura IA del borrador YA aprobado, con voz de marca. Fallback honesto a spintax.
   try {
@@ -145,10 +149,12 @@ export async function generateVariant(
       new Promise<never>((_, reject) => setTimeout(() => reject(new Error('IA no respondió en 25 s')), 25_000)),
     ]) as { choices?: Array<{ message?: { content?: string } }> };
     const out = completion?.choices?.[0]?.message?.content?.trim();
-    if (out && out.length > 20 && out.length <= 6000) return { text: out, source: 'ai_rewrite' };
-    return { text: spinned, source: 'spintax' };
+    if (out && out.length > 20 && out.length <= 6000) {
+      return { text: boldStyle === 'unicode' ? applyUnicodeBold(out) : out, source: 'ai_rewrite' };
+    }
+    return { text: boldStyle === 'unicode' ? applyUnicodeBold(spinned) : spinned, source: 'spintax' };
   } catch {
-    return { text: spinned, source: 'spintax' };
+    return { text: boldStyle === 'unicode' ? applyUnicodeBold(spinned) : spinned, source: 'spintax' };
   }
 }
 
@@ -171,6 +177,7 @@ export interface ClaimableJob {
   variant: string;
   variantSource: string;
   firstComment: string;
+  commentDelaySec: number; // espera antes del bump-comment (0 = inmediato)
   mediaUrls: string[];
   engine: string;
   mode: string;
@@ -238,10 +245,15 @@ export async function claimJobsForWorker(
     });
     for (const job of candidates) {
       if (job.targetKind === 'group' && !job.group) continue;
-      const variant = await generateVariant(campaign.text, `${job.id}::${job.targetName}`, autonomy, brandCtx);
-      // Adjuntos del job (copia de la campaña); [] si la campaña es solo texto.
+      const variant = await generateVariant(campaign.text, `${job.id}::${job.targetName}`, autonomy, brandCtx, campaign.boldStyle);
+      // Adjuntos del job: copia de la campaña; con mediaMode=rotate, una imagen
+      // distinta por grupo (rotación determinista por job, roadmap #3).
       let mediaUrls: string[] = [];
       try { const parsed = JSON.parse(job.mediaUrls ?? '[]'); if (Array.isArray(parsed)) mediaUrls = parsed.map(String).filter(Boolean); } catch { /* sin adjuntos */ }
+      if (campaign.mediaMode === 'rotate' && mediaUrls.length > 1) {
+        const picked = pickRotatedMedia(mediaUrls, job.id);
+        mediaUrls = picked ? [picked] : [];
+      }
       const until = new Date(Date.now() + 10 * 60 * 1000);
       const updated = await db.fbJob.update({
         where: { id: job.id },
@@ -257,6 +269,7 @@ export async function claimJobsForWorker(
         variant: updated.variant,
         variantSource: updated.variantSource,
         firstComment: campaign.firstComment,
+        commentDelaySec: campaign.commentDelaySec,
         mediaUrls,
         engine: campaign.engine,
         mode: campaign.mode,
