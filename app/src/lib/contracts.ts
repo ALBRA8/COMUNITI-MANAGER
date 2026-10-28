@@ -25,6 +25,7 @@ export const CONTRACTS = [
   'fb_groups_post',
   'fb_groups_sync',
   'fb_groups_report',
+  'fb_groups_join',
 ] as const;
 export type Contract = (typeof CONTRACTS)[number];
 

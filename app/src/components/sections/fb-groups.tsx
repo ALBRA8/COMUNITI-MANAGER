@@ -28,6 +28,10 @@ interface FbCampaignRow {
 interface FbAlertRow {
   id: string; kind: string; message: string; pausedUntil: string | null; resolved: boolean; createdAt: string;
 }
+interface FbJoinTaskRow {
+  id: string; url: string; fbId: string; keyword: string; status: string; attempts: number;
+  failReason: string; joinedAt: string | null; createdAt: string; workerName: string | null;
+}
 
 const WORKER_STATUS_LABEL: Record<string, string> = {
   OFFLINE: 'Sin conexión', IDLE: 'Inactivo', RUNNING: 'Publicando',
@@ -41,27 +45,40 @@ const JOB_STATUS_LABEL: Record<string, string> = {
   QUEUED: 'En cola', LEASED: 'Asignado', POSTED: 'Publicado', FAILED: 'Fallido',
   SKIPPED: 'Omitido', PENDING_REVIEW: 'Revisión de admin', CANCELLED: 'Cancelado',
 };
+const JOIN_STATUS_LABEL: Record<string, string> = {
+  PENDING: 'En cola', LEASED: 'Uniéndose', JOINED: 'Unido', REQUESTED: 'Solicitud pendiente',
+  SKIPPED: 'Ya miembro', FAILED: 'Fallido', CANCELLED: 'Cancelado',
+};
+const JOIN_STATUS_VARIANT: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
+  PENDING: 'outline', LEASED: 'secondary', JOINED: 'default', REQUESTED: 'secondary',
+  SKIPPED: 'outline', FAILED: 'destructive', CANCELLED: 'outline',
+};
 
 export function FbGroupsSection({ brandId, refresh }: SectionProps) {
   const [workers, setWorkers] = useState<FbWorkerRow[]>([]);
   const [alerts, setAlerts] = useState<FbAlertRow[]>([]);
   const [groups, setGroups] = useState<FbGroupRow[]>([]);
   const [campaigns, setCampaigns] = useState<FbCampaignRow[]>([]);
+  const [joinTasks, setJoinTasks] = useState<FbJoinTaskRow[]>([]);
+  const [joinCounts, setJoinCounts] = useState<Record<string, number>>({});
   const [secretShown, setSecretShown] = useState<string>('');
   const [notice, setNotice] = useState<string>('');
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const [w, g, c] = await Promise.all([
+      const [w, g, c, j] = await Promise.all([
         fetch('/api/fb-workers').then((r) => r.json()),
         fetch('/api/fb-groups').then((r) => r.json()),
         fetch('/api/fb-campaigns').then((r) => r.json()),
+        fetch('/api/fb-joins').then((r) => r.json()),
       ]);
       setWorkers(w.workers ?? []);
       setAlerts(w.alerts ?? []);
       setGroups(g.groups ?? []);
       setCampaigns(c.campaigns ?? []);
+      setJoinTasks(j.tasks ?? []);
+      setJoinCounts(j.counts ?? {});
     } catch {
       setNotice('No se pudo cargar el módulo FB-GROUPS');
     }
@@ -193,6 +210,77 @@ export function FbGroupsSection({ brandId, refresh }: SectionProps) {
         </CardContent>
       </Card>
 
+      {/* Auto-join (P6) */}
+      <Card className="mb-4">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm">Auto-join: unirse a grupos (P6)</CardTitle>
+          <CardDescription>
+            Pega URLs de grupos y el worker se une a ritmo humano (huecos 20-45 min, techo 2/4/6 al día según
+            antigüedad, corte nocturno). Al confirmarse JOINED el grupo entra en la colección <code>auto-join</code> y
+            queda disponible para campañas. Los cuestionarios de admisión nunca se automatizan.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <JoinForm busy={busy} onCreate={async (payload) => {
+            const data = await post('/api/fb-joins', payload, 'Tareas de unión creadas: el worker las reclamará respetando su techo y ritmo.');
+            if (data && (data.rejected ?? []).length > 0) {
+              setNotice(`Tareas creadas: ${data.created}. Rechazadas: ${(data.rejected as Array<{ reason: string }>).map((r) => r.reason).join(' | ')}`);
+            }
+          }} />
+          {joinTasks.length > 0 && (
+            <div className="max-h-56 overflow-auto rounded border">
+              <table className="w-full text-xs">
+                <thead className="bg-muted/50 sticky top-0">
+                  <tr>
+                    <th className="p-1.5 text-left font-medium">Grupo</th>
+                    <th className="p-1.5 text-left font-medium">Keyword</th>
+                    <th className="p-1.5 text-left font-medium">Estado</th>
+                    <th className="p-1.5 text-left font-medium">Detalle</th>
+                    <th className="p-1.5 text-left font-medium"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {joinTasks.map((t) => (
+                    <tr key={t.id} className="border-t">
+                      <td className="p-1.5 max-w-[220px] truncate"><a href={t.url} target="_blank" rel="noreferrer" className="underline-offset-2 hover:underline">{t.fbId}</a></td>
+                      <td className="p-1.5"><code className="text-[10px]">{t.keyword || '—'}</code></td>
+                      <td className="p-1.5"><Badge variant={JOIN_STATUS_VARIANT[t.status] ?? 'outline'}>{JOIN_STATUS_LABEL[t.status] ?? t.status}</Badge></td>
+                      <td className="p-1.5 text-muted-foreground max-w-[260px] truncate" title={t.failReason}>
+                        {t.joinedAt ? `unido ${new Date(t.joinedAt).toLocaleDateString('es-CO')}` : t.failReason || `${t.attempts} intento(s)`}
+                      </td>
+                      <td className="p-1.5">
+                        {['PENDING', 'FAILED'].includes(t.status) ? (
+                          <Button size="sm" variant="outline" className="h-6 text-[10px]" disabled={busy}
+                            onClick={async () => {
+                              await fetch('/api/fb-joins', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: t.id, action: 'cancel' }) });
+                              setNotice('Tarea de unión cancelada'); await load();
+                            }}>
+                            Cancelar
+                          </Button>
+                        ) : ['JOINED', 'REQUESTED', 'SKIPPED', 'FAILED', 'CANCELLED'].includes(t.status) ? (
+                          <Button size="sm" variant="outline" className="h-6 text-[10px]" disabled={busy}
+                            onClick={async () => {
+                              await fetch('/api/fb-joins', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: t.id, action: 'delete' }) });
+                              setNotice('Tarea terminada eliminada de la lista'); await load();
+                            }}>
+                            Quitar
+                          </Button>
+                        ) : null}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {joinTasks.length > 0 && (
+            <p className="text-muted-foreground text-[11px]">
+              Cola: {joinCounts.PENDING ?? 0} pendiente(s) · {joinCounts.JOINED ?? 0} unidos · {joinCounts.REQUESTED ?? 0} esperando admin · {joinCounts.FAILED ?? 0} fallidos
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Campañas */}
       <Card className="mb-4">
         <CardHeader className="pb-2">
@@ -249,7 +337,7 @@ export function FbGroupsSection({ brandId, refresh }: SectionProps) {
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm">Escudo anti-ban</CardTitle>
-          <CardDescription>Warmup 5→10→20/día · pausas 3-10 min con jitter · corte nocturno 22:00-07:00 · pausa de 12 h ante cualquier desafío de Facebook.</CardDescription>
+          <CardDescription>Warmup 5→10→20/día (posts) y 2→4→6/día (uniones) · pausas 3-10 min entre posts y 20-45 min entre uniones · corte nocturno 22:00-07:00 · pausa de 12 h ante cualquier desafío de Facebook.</CardDescription>
         </CardHeader>
         <CardContent className="text-xs space-y-1.5">
           {alerts.length === 0 ? (
@@ -310,6 +398,25 @@ function GroupImport({ busy, onImport }: { busy: boolean; onImport: (payload: { 
           Importar grupos
         </Button>
         <span className="text-muted-foreground">El worker también sincroniza la lista automáticamente desde tu sesión.</span>
+      </div>
+    </div>
+  );
+}
+
+function JoinForm({ busy, onCreate }: { busy: boolean; onCreate: (payload: { urls: string[]; keyword: string }) => Promise<void> }) {
+  const [raw, setRaw] = useState('');
+  const [keyword, setKeyword] = useState('');
+  const urls = raw.split('\n').map((s) => s.trim()).filter(Boolean);
+  return (
+    <div className="space-y-2 text-xs">
+      <Textarea className="text-xs min-h-[64px]" placeholder={'https://www.facebook.com/groups/...&#10;(una URL de grupo por línea)'} value={raw} onChange={(e) => setRaw(e.target.value)} />
+      <div className="flex gap-2 items-center">
+        <Input className="h-8 w-44 text-xs" placeholder="Keyword de origen (opcional)" value={keyword} onChange={(e) => setKeyword(e.target.value)} />
+        <Button size="sm" className="h-8 text-xs" disabled={busy || urls.length === 0}
+          onClick={async () => { await onCreate({ urls, keyword: keyword.trim() }); setRaw(''); }}>
+          Encolar uniones ({urls.length})
+        </Button>
+        <span className="text-muted-foreground">Descubre grupos buscando en Facebook con tu keyword; pega aquí sus URLs. Solo grupos públicos sin cuestionario se automatizan.</span>
       </div>
     </div>
   );

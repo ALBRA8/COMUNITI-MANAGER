@@ -4,7 +4,7 @@
 
 import http from 'node:http';
 import { sign } from './hmac.mjs';
-import { createGate, gateAllows, nextGapMs, nextNightResume } from './anti-ban.mjs';
+import { createGate, gateAllows, nextGapMs, nextNightResume, joinGateAllows, nextJoinGapMs } from './anti-ban.mjs';
 import * as engine from './engine-dom.mjs';
 
 const PORT = Number(process.env.FB_WORKER_PORT ?? 8765);
@@ -141,6 +141,80 @@ async function tick({ manual = false } = {}) {
   return { posted: false, job: job.targetName, reason: result.failReason };
 }
 
+// ─── P6 auto-join: bucle propio, más lento y con topes del chaleco ──
+
+async function joinTick() {
+  const missing = cfgMissing();
+  if (missing.length) return { skipped: true, reason: `Config incompleta: ${missing.join(', ')}` };
+
+  // 1) Puerta local de uniones (pausa defensiva, sesión, noche, hueco 20-45 min)
+  const verdict = joinGateAllows(gate);
+  if (!verdict.ok) return { skipped: true, reason: verdict.reason };
+
+  // 2) Reclamar una tarea de unión al chaleco (techo propio con warmup)
+  let claim;
+  try {
+    claim = await harnessPost('/api/fb-joins/claim', { workerId: WORKER_ID });
+  } catch (e) {
+    return { skipped: true, reason: `Claim de unión falló: ${e.message}` };
+  }
+  if (claim.note && /PAUSED_ANTI_BAN/.test(claim.note)) {
+    gate.pausedUntil = claim.pausedUntil ? new Date(claim.pausedUntil) : new Date(Date.now() + 12 * 3600_000);
+    gate.pausedReason = claim.note;
+    await ping('PAUSED_ANTI_BAN');
+    return { skipped: true, reason: claim.note };
+  }
+  if (!claim.task) return { skipped: true, reason: claim.note ?? 'Sin tareas de unión pendientes' };
+
+  // 3) Verificar sesión antes de actuar
+  if (gate.sessionStatus !== 'OK') {
+    const s = await engine.checkSession();
+    if (s.startsWith('CHALLENGE')) {
+      gate.pausedUntil = new Date(Date.now() + 12 * 3600_000);
+      gate.pausedReason = s;
+      await harnessPost('/api/fb-joins/report', {
+        workerId: WORKER_ID,
+        reports: [{ taskId: claim.task.id, status: 'FAILED', failReason: s }],
+        alerts: [{ kind: 'CHALLENGE', message: `Detección al verificar sesión (join): ${s}`, pauseHours: 12 }],
+        sessionStatus: 'CHALLENGE_DETECTED',
+      });
+      return { skipped: true, reason: s };
+    }
+    gate.sessionStatus = s === 'OK' ? 'OK' : 'AWAITING_SESSION';
+    if (gate.sessionStatus !== 'OK') {
+      return { skipped: true, reason: 'AWAITING_SESSION: la tarea de unión vuelve a la cola al vencer el lease' };
+    }
+  }
+
+  // 4) Unirse con el motor DOM
+  console.log(`[join] uniéndose a ${claim.task.url}${claim.task.keyword ? ` (keyword: ${claim.task.keyword})` : ''}`);
+  let result;
+  try {
+    result = await engine.joinGroupByUrl(claim.task.url);
+  } catch (e) {
+    result = { status: 'FAILED', failReason: `Error del motor: ${e.message}` };
+  }
+
+  // 5) Reporte firmado al chaleco
+  await harnessPost('/api/fb-joins/report', {
+    workerId: WORKER_ID,
+    reports: [{ taskId: claim.task.id, status: result.status, failReason: result.failReason ?? '' }],
+    alerts: result.status === 'FAILED' && /DESAFIO|CHALLENGE/i.test(result.failReason ?? '')
+      ? [{ kind: 'CHALLENGE', message: result.failReason, pauseHours: 12 }]
+      : [],
+    sessionStatus: 'IDLE',
+  });
+
+  if (result.status === 'JOINED' || result.status === 'REQUESTED') {
+    gate.lastJoinAt = new Date();
+    const gap = nextJoinGapMs();
+    console.log(`[join-ok] ${claim.task.url}: ${result.status} · siguiente unión en ${Math.round(gap / 60000)} min`);
+    return { joined: result.status, url: claim.task.url, nextGapMin: Math.round(gap / 60000) };
+  }
+  console.warn(`[join-fallo] ${claim.task.url}: ${result.failReason}`);
+  return { joined: false, url: claim.task.url, reason: result.failReason };
+}
+
 // ─── API local del worker (para el operador y para el botón "Ejecutar ahora") ──
 
 const server = http.createServer(async (req, res) => {
@@ -153,6 +227,7 @@ const server = http.createServer(async (req, res) => {
       pausedUntil: gate.pausedUntil,
       pausedReason: gate.pausedReason,
       lastPostAt: gate.lastPostAt,
+      lastJoinAt: gate.lastJoinAt,
       harness: HARNESS_URL || '(sin configurar)',
       nightResume: null,
     });
@@ -182,6 +257,11 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify(result));
   }
+  if (url === '/api/join-tick' && req.method === 'POST') {
+    const result = await joinTick();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify(result));
+  }
   res.writeHead(404, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify({ error: 'Ruta no encontrada' }));
 });
@@ -198,6 +278,8 @@ server.listen(PORT, () => {
   }
   if (!missing.length) {
     setInterval(() => tick().catch((e) => console.error('[tick]', e.message)), TICK_SECONDS * 1000);
+    setInterval(() => joinTick().catch((e) => console.error('[join-tick]', e.message)), TICK_SECONDS * 1000);
     console.log(`· Bucle interno activo cada ${TICK_SECONDS}s: ping, claim, publicación y reporte.`);
+    console.log(`· Auto-join activo (P6): tareas de unión con ritmo propio de ${process.env.FB_JOIN_GAP_MIN ?? 20}-${process.env.FB_JOIN_GAP_MAX ?? 45} min y techo del chaleco.`);
   }
 });

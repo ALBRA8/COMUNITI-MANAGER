@@ -285,3 +285,58 @@ export async function firstComment(job, postUrl) {
     await page.close().catch(() => undefined);
   }
 }
+
+// ─── Auto-join (P6): unirse a un grupo desde su URL ──────────────
+
+/** Estados honestos: JOINED | REQUESTED (espera al admin) | SKIPPED (ya miembro) | FAILED.
+ *  Los cuestionarios de admisión NUNCA se automatizan: las respuestas son responsabilidad humana. */
+export async function joinGroupByUrl(url) {
+  const page = await newPage();
+  try {
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await sleep(rnd(2500, 4500));
+    const body = (await page.locator('body').innerText().catch(() => '')).slice(0, 5000);
+    const marker0 = scanForMarkers(body);
+    if (marker0) return { status: 'FAILED', failReason: `DESAFIO_DETECTADO:${marker0}` };
+    if (await page.locator('input[name="email"]').count()) {
+      return { status: 'FAILED', failReason: 'Sin sesión iniciada en el perfil del worker' };
+    }
+
+    const alreadyMember = /has entrado|eres miembro|you're a member|you are a member|joined the group/i.test(body);
+    const cancelRequest = /cancelar solicitud|cancel request/i.test(body);
+    if (alreadyMember) return { status: 'SKIPPED', failReason: 'Ya eres miembro de este grupo' };
+    if (cancelRequest) return { status: 'REQUESTED', failReason: 'Ya había una solicitud pendiente en este grupo' };
+
+    const joinBtn = page.locator(
+      'div[role="button"]:has-text("Unirse al grupo"), div[role="button"]:has-text("Unirse"), ' +
+      'div[role="button"]:has-text("Join group"), div[role="button"]:has-text("Join"), ' +
+      'div[role="button"][aria-label*="Unirse"], div[role="button"][aria-label*="Join"]'
+    ).first();
+    if (!(await joinBtn.isVisible().catch(() => false))) {
+      return { status: 'FAILED', failReason: 'Botón de unión no visible (¿layout distinto, grupo privado o página de error?)' };
+    }
+    await sleep(rnd(1200, 2600));
+    await joinBtn.click();
+
+    // Confirmación honesta: solicitud enviada, membresía, cuestionario o bloqueo.
+    for (let i = 0; i < 12; i++) {
+      await sleep(1000);
+      const body2 = (await page.locator('body').innerText().catch(() => '')).slice(0, 6000);
+      const marker = scanForMarkers(body2);
+      if (marker) return { status: 'FAILED', failReason: `Facebook mostró un bloqueo: ${marker}` };
+      if (/cancelar solicitud|solicitud enviada|solicitaste unirte|request sent|cancel request|requested to join/i.test(body2)) {
+        return { status: 'REQUESTED', failReason: 'Solicitud enviada: espera aprobación del admin' };
+      }
+      if (/has entrado|eres miembro|you're a member|you are a member|joined the group/i.test(body2)) {
+        return { status: 'JOINED' };
+      }
+      const questions = await page.locator('div[role="dialog"] textarea, div[role="dialog"] input[type="radio"], div[role="dialog"] div[role="radiogroup"]').count();
+      if (questions > 0) {
+        return { status: 'FAILED', failReason: 'El grupo exige responder un cuestionario de admisión: no se automatiza (responde manualmente desde el Chrome del worker)' };
+      }
+    }
+    return { status: 'FAILED', failReason: 'No se confirmó la unión tras el clic (FB no mostró solicitud enviada ni membresía)' };
+  } finally {
+    await page.close().catch(() => undefined);
+  }
+}

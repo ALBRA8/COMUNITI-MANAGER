@@ -31,6 +31,8 @@ FB_NIGHT_START=22       # corte nocturno local
 FB_NIGHT_END=7
 FB_MIN_GAP_MIN=3        # ritmo humano entre posts
 FB_MAX_GAP_MIN=10
+FB_JOIN_GAP_MIN=20      # ritmo humano entre uniones (P6 auto-join)
+FB_JOIN_GAP_MAX=45
 ```
 
 ## Puesta en marcha (5 minutos)
@@ -59,6 +61,25 @@ Cada campaña admite hasta 4 imágenes. En el panel pega una por línea:
 Si una imagen no se puede descargar o el compositor no acepta adjuntos, el job
 falla con `ADJUNTO_FALLIDO` y **no se publica un post sin las fotos prometidas**.
 
+### Auto-join (P6)
+
+El worker puede **unirse a grupos** desde una cola creada en el panel:
+
+1. Busca grupos con tu keyword en Facebook y pega sus URLs en la tarjeta
+   **Auto-join** del panel (una por línea; keyword opcional para trazabilidad).
+2. El worker reclama tareas por `/api/fb-joins/claim` y visita cada grupo:
+   si el botón "Unirse" está disponible, hace clic y confirma honestamente.
+3. Estados: `JOINED` (el grupo entra en la colección `auto-join` y queda en
+   rotación), `REQUESTED` (solicitud enviada, espera al admin; el grupo se crea
+   excluido), `SKIPPED` (ya eras miembro; no consume techo), `FAILED` (motivo
+   exacto, sin datos inventados).
+
+Ritmo propio y conservador: hueco de **20-45 min** entre uniones (`FB_JOIN_GAP_MIN/MAX`),
+**techo diario 2/4/6** según antigüedad de la cuenta (lo aplica el chaleco),
+corte nocturno y pausa defensiva de 12 h compartidos con la publicación.
+Los grupos con cuestionario de admisión o cuya unión no se puede confirmar
+quedan en `FAILED`: **nunca se automatizan respuestas ni se fuerza nada**.
+
 ## Checklist de la primera campaña real
 
 1. Worker registrado en el panel y `npm start` con el `.env` completo.
@@ -74,8 +95,8 @@ falla con `ADJUNTO_FALLIDO` y **no se publica un post sin las fotos prometidas**
 
 ## Qué NO hace (honestidad)
 
-- No se une a grupos, no omite aprobaciones de administradores, no toca cuentas
-  ajenas, no raspa feeds de terceros.
+- No omite aprobaciones de administradores, no responde cuestionarios de
+  admisión, no toca cuentas ajenas, no raspa feeds de terceros.
 - Si Facebook muestra un bloqueo o checkpoint, se pausa 12 h y alerta al chaleco.
 - Si un grupo exige revisión del admin, el job queda `PENDING_REVIEW`: nunca
   se cuenta como publicado sin URL viva (o evidencia de envío documentada).

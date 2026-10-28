@@ -159,12 +159,14 @@ con su motivo exacto).
 - La sesión vive en el perfil Chrome local del worker; el chaleco nunca ve
   cookies ni contraseñas (solo resultados).
 
-## 11. Fuera de alcance (explícito, v1)
+## 11. Fuera de alcance (explícito)
 
-- Unirse a grupos automáticamente. Omitir aprobaciones de administradores.
-  Multi-cuenta simultánea (v1 = 1 perfil Chrome por worker; multi-cuenta en
-  v2 con workers separados). Lead Radar de grupos (escucha de feeds) — hueco
-  real pero se evaluará con AGENTE-CHISMOSO antes de duplicar.
+- Omitir aprobaciones de administradores o responder cuestionarios de admisión
+  (el P6 se une a grupos, pero la aprobación del admin y las respuestas son
+  responsabilidad humana). Multi-cuenta simultánea (v1 = 1 perfil Chrome por
+  worker; multi-cuenta en v2 con workers separados). Lead Radar de grupos
+  (escucha de feeds) — hueco real pero se evaluará con AGENTE-CHISMOSO antes de
+  duplicar.
 - Garantizar publicación: si el grupo exige aprobación de admin, el job queda
   PENDING_REVIEW con evidencia, nunca "exitosa" hasta URL viva.
 
@@ -179,3 +181,11 @@ con su motivo exacto).
 - **P4** Verificación E2E + build de producción + README + push. *(hecho)*
 - **P5** Adjuntos de imagen (hasta 4 por post): URL http(s) o ruta local del
   worker; fallo honesto ADJUNTO_FALLIDO si el compositor no colabora. *(hecho)*
+- **P6** Auto-join (hueco #3 de paridad): cola FbJoinTask creada desde el panel
+  (URLs normalizadas y deduplicadas), claim/report firmados con lease de 15 min
+  y reencolado de leases vencidos (FAILED a los 3 intentos), techo propio
+  2/4/6 al día según warmup, huecos locales de 20-45 min, corte nocturno y
+  pausa defensiva compartidos con los posts. JOINED crea el grupo en la
+  colección auto-join y lo pone en rotación; REQUESTED lo crea excluido
+  esperando al admin; SKIPPED (ya miembro) no consume techo. Los cuestionarios
+  de admisión nunca se automatizan. *(hecho)*

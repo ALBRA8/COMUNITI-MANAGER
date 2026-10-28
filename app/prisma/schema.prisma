@@ -342,7 +342,8 @@ model FbWorker {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  jobs FbJob[]
+  jobs      FbJob[]
+  joinTasks FbJoinTask[]
 }
 
 model FbGroup {
@@ -406,12 +407,33 @@ model FbJob {
   @@index([status, leaseUntil])
 }
 
+model FbJoinTask {
+  id         String    @id @default(cuid())
+  workerId   String? // opcional: fija la tarea a un worker concreto
+  keyword    String    @default("") // keyword de origen (trazabilidad)
+  fbId       String // id/slug normalizado del grupo
+  url        String // URL canónica facebook.com/groups/...
+  status     String    @default("PENDING") // PENDING | LEASED | JOINED | REQUESTED | SKIPPED | FAILED | CANCELLED
+  failReason String    @default("")
+  attempts   Int       @default(0)
+  leaseUntil DateTime?
+  joinedAt   DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  worker FbWorker? @relation(fields: [workerId], references: [id])
+
+  @@index([status, leaseUntil])
+}
+
 model FbDailyUsage {
   id       String @id @default(cuid())
   workerId String
   day      String // YYYY-MM-DD en zona horaria de la cuenta
   posts    Int    @default(0)
   cap      Int    @default(5)
+  joins    Int    @default(0) // uniones ejecutadas hoy (P6 auto-join)
+  joinCap  Int    @default(6) // techo de uniones según warmup
 
   @@unique([workerId, day])
 }
