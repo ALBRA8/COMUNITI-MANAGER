@@ -2,7 +2,12 @@
 // Automatización best-effort: los selectores corresponden a la vista de escritorio
 // de Facebook (octubre 2026) y pueden cambiar; ante cualquier marcador de
 // advertencia el worker se detiene y reporta (nunca se fuerza un envío dudoso).
+// P1: adjuntos de imagen (hasta 4) — si no se pueden adjuntar, NO se publica
+// un post distinto al aprobado: fallo honesto ADJUNTO_FALLIDO.
 
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
 import { scanForMarkers } from './anti-ban.mjs';
 
 const PROFILE_DIR = process.env.FB_PROFILE_DIR ?? './chrome-profile';
@@ -121,6 +126,61 @@ async function openComposerAndType(page, text) {
   return dialog;
 }
 
+// ─── Adjuntos (P1): resolver archivos y engancharlos al compositor ──
+
+const MEDIA_EXT_OK = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
+
+/** Resuelve los adjuntos del job: descarga URLs http(s) a un temp local o valida rutas del worker. */
+async function resolveMediaFiles(job) {
+  const list = Array.isArray(job.mediaUrls) ? job.mediaUrls : [];
+  const dir = path.join(os.tmpdir(), `fb-worker-media-${job.id ?? Date.now()}`);
+  const files = [];
+  for (let i = 0; i < list.length; i++) {
+    const m = String(list[i]).trim();
+    if (!m) continue;
+    if (/^https?:\/\//i.test(m)) {
+      const res = await fetch(m, { redirect: 'follow' });
+      if (!res.ok) throw new Error(`Descarga fallida (HTTP ${res.status}) para ${m.slice(0, 80)}`);
+      const buf = Buffer.from(await res.arrayBuffer());
+      if (buf.length < 1024) throw new Error(`Archivo sospechosamente pequeño (${buf.length} B) en ${m.slice(0, 80)}`);
+      let ext = path.extname(new URL(m).pathname).toLowerCase();
+      if (!MEDIA_EXT_OK.includes(ext)) ext = '.jpg'; // URL sin extensión: Facebook detecta por contenido
+      fs.mkdirSync(dir, { recursive: true });
+      const file = path.join(dir, `media-${i}${ext}`);
+      fs.writeFileSync(file, buf);
+      files.push(file);
+    } else {
+      if (!fs.existsSync(m)) throw new Error(`Ruta local no existe en la máquina del worker: ${m}`);
+      files.push(m);
+    }
+  }
+  return { files, dir };
+}
+
+function cleanupMedia(dir, files) {
+  for (const f of files) {
+    if (f.startsWith(os.tmpdir())) fs.rmSync(f, { force: true });
+  }
+  try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* ya limpio */ }
+}
+
+/** Abre el selector de fotos del compositor y adjunta los archivos. Lanza si el DOM no colabora. */
+async function attachMedia(page, dialog, files) {
+  const photoBtn = dialog.locator(
+    'div[role="button"]:has-text("Foto/vídeo"), div[role="button"]:has-text("Foto/Vídeo"), div[role="button"]:has-text("Foto"), div[role="button"][aria-label*="Foto"], div[role="button"]:has-text("Photo/Video"), div[role="button"][aria-label*="Photo"]'
+  ).first();
+  await sleep(rnd(600, 1400));
+  await photoBtn.click();
+  await sleep(rnd(1200, 2500));
+  const input = dialog.locator('input[type="file"]').first();
+  if (!(await input.count())) {
+    throw new Error('Input de archivos no visible en el compositor (¿layout distinto o botón de foto no encontrado?)');
+  }
+  await input.setInputFiles(files);
+  // Espera a que suban las miniaturas: no se fuerza envío con la subida a medias.
+  await sleep(rnd(2500, 4500) + files.length * rnd(1500, 3000));
+}
+
 async function submitAndConfirm(page, dialog) {
   const publish = dialog.locator('div[role="button"]:has-text("Publicar"), div[role="button"]:has-text("Post"), div[aria-label="Publicar"], div[aria-label="Post"]').first();
   await sleep(rnd(900, 2000));
@@ -173,6 +233,23 @@ export async function postJob(job) {
     }
 
     const dialog = await openComposerAndType(page, job.variant);
+
+    // Adjuntos (P1): si se prometieron fotos y no se pueden enganchar, no se publica nada.
+    const mediaList = Array.isArray(job.mediaUrls) ? job.mediaUrls.filter(Boolean) : [];
+    let mediaNote = '';
+    if (mediaList.length > 0) {
+      let resolved;
+      try {
+        resolved = await resolveMediaFiles(job);
+        await attachMedia(page, dialog, resolved.files);
+        mediaNote = `${resolved.files.length} adjunto(s)`;
+      } catch (e) {
+        if (resolved) cleanupMedia(resolved.dir, resolved.files);
+        return { status: 'FAILED', failReason: `ADJUNTO_FALLIDO: ${e.message}` };
+      }
+      cleanupMedia(resolved.dir, resolved.files);
+    }
+
     const result = await submitAndConfirm(page, dialog);
 
     if (!result.submitted) {
@@ -183,7 +260,7 @@ export async function postJob(job) {
     return {
       status: 'POSTED',
       postUrl,
-      failReason: postUrl ? '' : 'Publicado; URL exacta no capturable en este grupo (evidencia: confirmación de envío del compositor)',
+      failReason: postUrl ? '' : `Publicado${mediaNote ? ` con ${mediaNote}` : ''}; URL exacta no capturable en este grupo (evidencia: confirmación de envío del compositor)`,
     };
   } finally {
     await page.close().catch(() => undefined);

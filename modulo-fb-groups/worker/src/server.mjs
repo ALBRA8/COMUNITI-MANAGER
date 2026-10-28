@@ -100,7 +100,8 @@ async function tick({ manual = false } = {}) {
   }
 
   // 4) Publicar con el motor DOM
-  console.log(`[job] ${job.campaignName} → "${job.targetName}" (variante ${job.variantSource})`);
+  const nMedia = Array.isArray(job.mediaUrls) ? job.mediaUrls.filter(Boolean).length : 0;
+  console.log(`[job] ${job.campaignName} → "${job.targetName}" (variante ${job.variantSource})${nMedia ? ` · ${nMedia} adjunto(s)` : ''}`);
   let result;
   try {
     result = await engine.postJob(job);

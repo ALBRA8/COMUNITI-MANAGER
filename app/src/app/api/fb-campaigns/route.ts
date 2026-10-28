@@ -11,8 +11,12 @@ export async function GET() {
       jobs: { select: { id: true, status: true, targetName: true, targetKind: true, variantSource: true, postUrl: true, failReason: true, postedAt: true } },
     },
   });
-  const summary = campaigns.map((c) => ({
+  const summary = campaigns.map((c) => {
+    let mediaCount = 0;
+    try { const arr = JSON.parse(c.mediaUrls ?? '[]'); if (Array.isArray(arr)) mediaCount = arr.length; } catch { /* sin adjuntos */ }
+    return {
     ...c,
+    mediaCount,
     counts: {
       total: c.jobs.length,
       queued: c.jobs.filter((j) => j.status === 'QUEUED' || j.status === 'LEASED').length,
@@ -21,7 +25,8 @@ export async function GET() {
       review: c.jobs.filter((j) => j.status === 'PENDING_REVIEW').length,
     },
     jobs: undefined,
-  }));
+    };
+  });
   return NextResponse.json({ campaigns: summary });
 }
 
@@ -38,6 +43,22 @@ export async function POST(req: NextRequest) {
   if (engine === 'internal') {
     return NextResponse.json({ error: 'Motor internal es experimental y está deshabilitado en v1 (honestidad del módulo)' }, { status: 400 });
   }
+
+  // Adjuntos (P1): hasta 4 imágenes por post; URL http(s) accesible por el worker o ruta local de su máquina.
+  const mediaList: string[] = Array.isArray(body.mediaUrls)
+    ? body.mediaUrls.map((m: unknown) => String(m).trim()).filter(Boolean)
+    : [];
+  if (mediaList.length > 4) {
+    return NextResponse.json({ error: 'Máximo 4 adjuntos por campaña (límite de Facebook)' }, { status: 400 });
+  }
+  for (const m of mediaList) {
+    const isUrl = /^https?:\/\//i.test(m);
+    const isLocalPath = m.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(m);
+    if (!isUrl && !isLocalPath) {
+      return NextResponse.json({ error: `Adjunto inválido "${m.slice(0, 60)}": usa URL http(s) o ruta local del worker` }, { status: 400 });
+    }
+  }
+  const mediaUrls = JSON.stringify(mediaList);
 
   const groups = targets.length > 0
     ? await db.fbGroup.findMany({ where: { id: { in: targets }, excluded: false } })
@@ -59,19 +80,20 @@ export async function POST(req: NextRequest) {
       firstComment: body.firstComment ? String(body.firstComment) : '',
       windowStart: Number.isFinite(body.windowStart) ? Number(body.windowStart) : 7,
       windowEnd: Number.isFinite(body.windowEnd) ? Number(body.windowEnd) : 21,
+      mediaUrls,
     },
   });
 
   if (mode === 'profile') {
-    await db.fbJob.create({ data: { campaignId: campaign.id, targetKind: 'profile', targetName: 'PERFIL', targetUrl: 'https://www.facebook.com/' } });
+    await db.fbJob.create({ data: { campaignId: campaign.id, targetKind: 'profile', targetName: 'PERFIL', targetUrl: 'https://www.facebook.com/', mediaUrls } });
   } else {
     for (const g of groups) {
-      await db.fbJob.create({ data: { campaignId: campaign.id, targetKind: mode, targetName: g.name, targetUrl: g.url || `https://www.facebook.com/groups/${g.fbId}`, groupId: g.id } });
+      await db.fbJob.create({ data: { campaignId: campaign.id, targetKind: mode, targetName: g.name, targetUrl: g.url || `https://www.facebook.com/groups/${g.fbId}`, groupId: g.id, mediaUrls } });
     }
   }
 
   await db.auditEntry.create({
-    data: { actor: 'human', action: 'FB_CAMPAIGN_CREATED', targetType: 'FB_CAMPAIGN', targetId: campaign.id, allowed: true, reason: `Campaña "${campaign.name}" con ${mode === 'profile' ? 1 : groups.length} objetivo(s), motor ${engine}, ventana ${campaign.windowStart}-${campaign.windowEnd}` },
+    data: { actor: 'human', action: 'FB_CAMPAIGN_CREATED', targetType: 'FB_CAMPAIGN', targetId: campaign.id, allowed: true, reason: `Campaña "${campaign.name}" con ${mode === 'profile' ? 1 : groups.length} objetivo(s), motor ${engine}, ventana ${campaign.windowStart}-${campaign.windowEnd}${mediaList.length ? `, ${mediaList.length} adjunto(s)` : ''}` },
   });
 
   return NextResponse.json({ campaign: { id: campaign.id, name: campaign.name }, jobs: mode === 'profile' ? 1 : groups.length });

@@ -47,6 +47,31 @@ FB_MAX_GAP_MIN=10
 6. Crea una campaña en el panel. El worker reclama jobs cada 60 s dentro de la
    ventana horaria y del techo diario con warmup.
 
+### Adjuntos de imagen (P1)
+
+Cada campaña admite hasta 4 imágenes. En el panel pega una por línea:
+
+- **URL http(s)** — el worker la descarga a un temp local antes de publicar
+  (jpg/png/webp/gif; sirve cualquier URL pública, incluso sin extensión).
+- **Ruta local** — un archivo de la máquina donde corre el worker
+  (Windows: `C:\fotos\promo.jpg` · Linux/macOS: `/home/tu/foto.png`).
+
+Si una imagen no se puede descargar o el compositor no acepta adjuntos, el job
+falla con `ADJUNTO_FALLIDO` y **no se publica un post sin las fotos prometidas**.
+
+## Checklist de la primera campaña real
+
+1. Worker registrado en el panel y `npm start` con el `.env` completo.
+2. Estado del worker en `IDLE` (no `OFFLINE`): significa HMAC y ping OK.
+3. `check-session` → `OK` y sesión de Facebook ya iniciada en el Chrome del worker.
+4. `sync-groups` ejecutado: tus grupos aparecen en el panel; revisa colecciones
+   y excluye los que no quieras en rotación.
+5. Antigüedad de la cuenta declarada con honestidad (define el techo: 5/10/20).
+6. Primera campaña: **2 o 3 grupos, no 30**. Texto con `{spintax|variaciones}`.
+7. Mira la ventana de Chrome: verifica que el post quedó como esperabas.
+8. Revisa el panel: `POSTED` con URL, o el motivo honesto si falló.
+9. Deja correr el ritmo (3-10 min entre grupos). No fuerces tandas.
+
 ## Qué NO hace (honestidad)
 
 - No se une a grupos, no omite aprobaciones de administradores, no toca cuentas
@@ -54,6 +79,8 @@ FB_MAX_GAP_MIN=10
 - Si Facebook muestra un bloqueo o checkpoint, se pausa 12 h y alerta al chaleco.
 - Si un grupo exige revisión del admin, el job queda `PENDING_REVIEW`: nunca
   se cuenta como publicado sin URL viva (o evidencia de envío documentada).
+- Si la campaña lleva imágenes y no se pueden adjuntar, falla con
+  `ADJUNTO_FALLIDO`: nunca publica un post distinto al aprobado.
 - El motor `internal` (peticiones web internas) está deshabilitado en v1.
 
 ## Riesgo declarado

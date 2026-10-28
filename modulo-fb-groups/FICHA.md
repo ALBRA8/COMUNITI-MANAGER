@@ -171,9 +171,11 @@ con su motivo exacto).
 ## 12. Fases de construcción
 
 - **P1** Worker: esqueleto + HMAC + health + sesión + group sync + motor DOM +
-  spintax + ritmo + techo diario + reportes firmados.
+  spintax + ritmo + techo diario + reportes firmados. *(hecho)*
 - **P2** Chaleco: modelos Prisma, rutas claim/report/workers/groups/campaigns,
-  sección de panel, auditoría e idempotencia.
+  sección de panel, auditoría e idempotencia. *(hecho)*
 - **P3** IA graduada (reescritura L2/L3), primer comentario, modo Página-en-grupo,
-  muro personal, health scores.
-- **P4** Verificación E2E + build de producción + README + push.
+  muro personal, health scores. *(hecho)*
+- **P4** Verificación E2E + build de producción + README + push. *(hecho)*
+- **P5** Adjuntos de imagen (hasta 4 por post): URL http(s) o ruta local del
+  worker; fallo honesto ADJUNTO_FALLIDO si el compositor no colabora. *(hecho)*

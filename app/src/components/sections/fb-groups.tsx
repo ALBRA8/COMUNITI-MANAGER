@@ -23,7 +23,7 @@ interface FbGroupRow {
 }
 interface FbCampaignRow {
   id: string; name: string; mode: string; engine: string; status: string;
-  createdAt: string; counts: { total: number; queued: number; posted: number; failed: number; review: number };
+  createdAt: string; mediaCount: number; counts: { total: number; queued: number; posted: number; failed: number; review: number };
 }
 interface FbAlertRow {
   id: string; kind: string; message: string; pausedUntil: string | null; resolved: boolean; createdAt: string;
@@ -216,6 +216,7 @@ export function FbGroupsSection({ brandId, refresh }: SectionProps) {
                   </div>
                   <p className="text-muted-foreground">
                     {c.counts.posted} publicados · {c.counts.queued} en cola · {c.counts.failed} fallidos · {c.counts.review} en revisión de admin · total {c.counts.total}
+                    {c.mediaCount > 0 ? ` · ${c.mediaCount} adjunto(s)` : ''}
                   </p>
                   <div className="flex gap-1.5">
                     <Button size="sm" variant="outline" className="h-7 text-xs" disabled={busy} onClick={async () => {
@@ -323,10 +324,12 @@ function CampaignForm({ busy, brandId, groups, onCreate }: {
   const [text, setText] = useState('');
   const [mode, setMode] = useState('group');
   const [firstComment, setFirstComment] = useState('');
+  const [media, setMedia] = useState('');
   const [windowStart, setWindowStart] = useState('7');
   const [windowEnd, setWindowEnd] = useState('21');
   const [selected, setSelected] = useState<string[]>([]);
   const active = groups.filter((g) => !g.excluded);
+  const mediaUrls = media.split('\n').map((s) => s.trim()).filter(Boolean).slice(0, 4);
   return (
     <div className="space-y-2 text-xs">
       <div className="flex flex-wrap gap-2">
@@ -344,6 +347,7 @@ function CampaignForm({ busy, brandId, groups, onCreate }: {
         <Input className="h-8 w-24 text-xs" type="number" min={0} max={23} value={windowEnd} onChange={(e) => setWindowEnd(e.target.value)} title="Hora fin ventana" />
       </div>
       <Textarea className="text-xs min-h-[72px]" placeholder="Texto base del post (aprobado o del operador). {Spintax|opcional} soportado." value={text} onChange={(e) => setText(e.target.value)} />
+      <Textarea className="text-xs min-h-[48px]" placeholder="Adjuntos (opcional): una imagen por línea, máx 4. URL http(s) accesible por el worker o ruta local de su máquina." value={media} onChange={(e) => setMedia(e.target.value)} />
       <Input className="h-8 text-xs" placeholder="Primer comentario (opcional, p.ej. el enlace)" value={firstComment} onChange={(e) => setFirstComment(e.target.value)} />
       {mode !== 'profile' && (
         <div className="max-h-32 overflow-auto rounded border p-2 space-y-1">
@@ -361,12 +365,13 @@ function CampaignForm({ busy, brandId, groups, onCreate }: {
         onClick={async () => {
           await onCreate({
             brandId, name, text, mode, engine: 'dom', firstComment,
+            mediaUrls,
             windowStart: Number(windowStart), windowEnd: Number(windowEnd),
             targets: mode === 'profile' ? [] : selected,
           });
-          setName(''); setText(''); setFirstComment(''); setSelected([]);
+          setName(''); setText(''); setFirstComment(''); setMedia(''); setSelected([]);
         }}>
-        Crear campaña ({mode === 'profile' ? 1 : selected.length} objetivo{mode === 'profile' ? '' : 's'})
+        Crear campaña ({mode === 'profile' ? 1 : selected.length} objetivo{mode === 'profile' ? '' : 's'}{mediaUrls.length ? ` · ${mediaUrls.length} adjunto${mediaUrls.length > 1 ? 's' : ''}` : ''})
       </Button>
     </div>
   );

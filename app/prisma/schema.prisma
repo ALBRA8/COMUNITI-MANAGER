@@ -371,6 +371,7 @@ model FbCampaign {
   firstComment String   @default("")
   windowStart  Int      @default(7) // hora local inicio ventana de publicación
   windowEnd    Int      @default(21)
+  mediaUrls    String   @default("[]") // JSON: hasta 4 adjuntos (URL http(s) o ruta local del worker)
   status       String   @default("QUEUED") // QUEUED | RUNNING | DONE | PAUSED | CANCELLED
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -388,6 +389,7 @@ model FbJob {
   targetUrl     String    @default("")
   variant       String    @default("") // texto final tras spintax/IA
   variantSource String    @default("base") // base | spintax | ai_rewrite
+  mediaUrls     String    @default("[]") // copia de los adjuntos de la campaña al crear el job
   status        String    @default("QUEUED") // QUEUED | LEASED | POSTED | FAILED | SKIPPED | PENDING_REVIEW | CANCELLED
   leaseUntil    DateTime?
   attempts      Int       @default(0)

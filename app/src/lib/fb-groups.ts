@@ -115,12 +115,16 @@ export async function generateVariant(
       brandContext ? `Voz de la marca: ${brandContext}` : '',
       'Devuelve SOLO el texto final, sin comillas ni explicaciones.',
     ].filter(Boolean).join(' ');
-    const completion = await zai.chat.completions.create({
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user', content: baseText },
-      ],
-    });
+    const completion = await Promise.race([
+      zai.chat.completions.create({
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: baseText },
+        ],
+      }),
+      // Si la IA se cuelga, el claim del worker no puede quedar bloqueado: fallback a spintax.
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('IA no respondió en 25 s')), 25_000)),
+    ]) as { choices?: Array<{ message?: { content?: string } }> };
     const out = completion?.choices?.[0]?.message?.content?.trim();
     if (out && out.length > 20 && out.length <= 6000) return { text: out, source: 'ai_rewrite' };
     return { text: spinned, source: 'spintax' };
@@ -148,6 +152,7 @@ export interface ClaimableJob {
   variant: string;
   variantSource: string;
   firstComment: string;
+  mediaUrls: string[];
   engine: string;
   mode: string;
   pageName: string;
@@ -215,6 +220,9 @@ export async function claimJobsForWorker(
     for (const job of candidates) {
       if (job.targetKind === 'group' && !job.group) continue;
       const variant = await generateVariant(campaign.text, `${job.id}::${job.targetName}`, autonomy, brandCtx);
+      // Adjuntos del job (copia de la campaña); [] si la campaña es solo texto.
+      let mediaUrls: string[] = [];
+      try { const parsed = JSON.parse(job.mediaUrls ?? '[]'); if (Array.isArray(parsed)) mediaUrls = parsed.map(String).filter(Boolean); } catch { /* sin adjuntos */ }
       const until = new Date(Date.now() + 10 * 60 * 1000);
       const updated = await db.fbJob.update({
         where: { id: job.id },
@@ -230,6 +238,7 @@ export async function claimJobsForWorker(
         variant: updated.variant,
         variantSource: updated.variantSource,
         firstComment: campaign.firstComment,
+        mediaUrls,
         engine: campaign.engine,
         mode: campaign.mode,
         pageName: campaign.pageName,
