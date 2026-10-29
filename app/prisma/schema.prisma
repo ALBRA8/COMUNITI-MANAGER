@@ -464,3 +464,101 @@ model FbMedia {
 
   @@index([brandId])
 }
+
+// ─── META POLICY INTELLIGENCE — Centro de Inteligencia y Cumplimiento ──
+// Vigilancia permanente de políticas de Meta: consulta de fuentes oficiales,
+// detección de cambios con versionado inmutable, motor de autorización central
+// y apagado de emergencia. Regla rectora: lo no verificado nunca es permiso.
+
+model MetaPolicySource {
+  id                 String    @id @default(cuid())
+  key                String    @unique // identificador estable, p.ej. "fb-dev-policies"
+  name               String    // nombre oficial del documento
+  url                String    // URL original de la fuente
+  product            String    // FACEBOOK | FACEBOOK_GROUPS | INSTAGRAM | WHATSAPP | META_BUSINESS | ADS | COMMERCE | APIS | PRIVACY | DEVELOPERS | COLOMBIA | TRANSPARENCY
+  alsoCovers         String    @default("") // productos adicionales que cubre, separados por coma (para filtros)
+  family             String    @default("A") // A Meta general | B desarrolladores | C WhatsApp | D Colombia
+  priority           String    @default("WEEKLY") // DAILY | WEEKLY | MANUAL (sin consulta automática fiable)
+  checkIntervalHours Int       @default(168)
+  method             String    @default("HTTP_GET") // HTTP_GET | MANUAL (procedimiento alternativo humano)
+  active             Boolean   @default(true)
+  lastCheckAt        DateTime?
+  lastOkAt           DateTime?
+  lastHash           String    @default("")
+  lastStatus         String    @default("PENDING") // PENDING | OK | CHANGED | FAILED | BLOCKED
+  lastError          String    @default("")
+  consecutiveFailures Int      @default(0)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  versions MetaPolicyVersion[]
+  checks   MetaPolicyCheckRun[]
+  changes  MetaPolicyChange[]
+}
+
+model MetaPolicyVersion {
+  id            String   @id @default(cuid())
+  sourceId      String
+  versionNumber Int // 1..n por fuente; NUNCA se sobrescribe una versión anterior
+  contentHash   String // SHA-256 del texto normalizado
+  excerpt       String   @default("") // primeros ~4000 caracteres de texto extraído
+  rawSize       Int      @default(0)
+  method        String   @default("HTTP_GET") // HTTP_GET | MANUAL
+  note          String   @default("") // nota del revisor si method=MANUAL
+  fetchedAt     DateTime @default(now())
+
+  source MetaPolicySource @relation(fields: [sourceId], references: [id])
+
+  @@index([sourceId, versionNumber])
+}
+
+model MetaPolicyCheckRun {
+  id           String    @id @default(cuid())
+  sourceId     String
+  kind         String    // MANUAL | DAILY | WEEKLY | MONTHLY
+  status       String    // OK | CHANGED | FAILED | BLOCKED
+  httpStatus   Int?
+  durationMs   Int?
+  hash         String    @default("")
+  previousHash String    @default("")
+  error        String    @default("")
+  evidence     String    @default("") // URL consultada + instante + método (trazabilidad)
+  createdAt    DateTime  @default(now())
+
+  source MetaPolicySource @relation(fields: [sourceId], references: [id])
+
+  @@index([sourceId, createdAt])
+}
+
+model MetaPolicyChange {
+  id              String    @id @default(cuid())
+  sourceId        String
+  kind            String    // NEW | MODIFIED | INACCESSIBLE | RECOVERED
+  severity        String    // CRITICO | ALTO | MEDIO | BAJO
+  summary         String    @default("") // resumen del cambio (comparación de versiones)
+  impact          String    @default("") // impacto sobre COMUNITI-MANAGER (interpretación marcada como tal)
+  affectedModules String    @default("[]") // JSON: ["fb-groups", ...]
+  recommendation  String    @default("") // recomendación preventiva (no es regla hasta que un humano la acepte)
+  status          String    @default("OPEN") // OPEN | ANALYZED | ACCEPTED | DISMISSED
+  detectedAt      DateTime  @default(now())
+  reviewedAt      DateTime?
+  reviewNote      String    @default("")
+  fromVersionId   String? // versión anterior conservada
+  toVersionId     String? // versión nueva
+
+  source MetaPolicySource @relation(fields: [sourceId], references: [id])
+
+  @@index([status, severity])
+}
+
+model MetaPolicyIncident {
+  id             String    @id @default(cuid())
+  kind           String    // SOURCE_FAILURE | EMERGENCY_STOP | POLICY_BLOCK | MANUAL
+  severity       String    @default("MEDIO") // CRITICO | ALTO | MEDIO | BAJO
+  module         String    @default("harness") // módulo afectado
+  description    String
+  status         String    @default("OPEN") // OPEN | RESOLVED
+  resolutionNote String    @default("")
+  createdAt      DateTime  @default(now())
+  resolvedAt     DateTime?
+}

@@ -6,6 +6,18 @@
 import crypto from 'crypto';
 import { db } from '@/lib/db';
 import { applyUnicodeBold, pickRotatedMedia } from '@/lib/fb-risk';
+import { authorize } from '@/lib/meta-policy';
+
+/** Gate de cumplimiento: el worker NO reclama nada si el motor de políticas de
+ * Meta lo impide (apagado de emergencia, cambio crítico sin analizar o
+ * documentación desactualizada). Última línea de defensa antes del vuelo. */
+async function policyHold(operation: 'FB_GROUP_POST' | 'FB_JOIN_GROUP'): Promise<string | null> {
+  const res = await authorize({ operation, actor: 'system:worker-claim' });
+  if (res.verdict === 'BLOQUEADO' || res.verdict === 'POLITICA_DESACTUALIZADA') {
+    return `POLICY_HOLD (${res.verdict}): ${res.reasons[0] ?? 'el motor de cumplimiento impide la operación'}`;
+  }
+  return null;
+}
 
 // ─── HMAC por worker (comparación en tiempo constante) ─────────────
 
@@ -196,6 +208,10 @@ export async function claimJobsForWorker(
   worker: { id: string; sessionAgeDays: number },
   capacity = 1,
 ): Promise<{ jobs: ClaimableJob[]; cap: number; usedToday: number; pausedUntil: Date | null; pausedKind?: string; note?: string }> {
+  const hold = await policyHold('FB_GROUP_POST');
+  if (hold) {
+    return { jobs: [], cap: 0, usedToday: 0, pausedUntil: null, note: hold };
+  }
   const day = todayKey();
   const cap = computeCap(worker.sessionAgeDays);
 
@@ -320,6 +336,10 @@ export interface ClaimableJoinTask {
 export async function claimJoinTaskForWorker(
   worker: { id: string; sessionAgeDays: number },
 ): Promise<{ task: ClaimableJoinTask | null; joinCap: number; joinsToday: number; pausedUntil: Date | null; pausedKind?: string; note?: string }> {
+  const hold = await policyHold('FB_JOIN_GROUP');
+  if (hold) {
+    return { task: null, joinCap: 0, joinsToday: 0, pausedUntil: null, note: hold };
+  }
   const day = todayKey();
   const joinCap = computeJoinCap(worker.sessionAgeDays);
   const usage = await db.fbDailyUsage.upsert({

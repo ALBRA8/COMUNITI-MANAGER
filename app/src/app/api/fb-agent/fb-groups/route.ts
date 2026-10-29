@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { computeCap, todayKey } from '@/lib/fb-groups';
+import { policyState } from '@/lib/meta-policy';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,7 +13,7 @@ export const dynamic = 'force-dynamic';
 
 export async function GET() {
   const day = todayKey();
-  const [workers, groupAgg, campaigns, joinCounts, alerts, usages] = await Promise.all([
+  const [workers, groupAgg, campaigns, joinCounts, alerts, usages, policy] = await Promise.all([
     db.fbWorker.findMany({ orderBy: { name: 'asc' } }),
     db.fbGroup.groupBy({ by: ['excluded'], _count: { _all: true } }),
     db.fbCampaign.findMany({
@@ -23,6 +24,7 @@ export async function GET() {
     db.fbJoinTask.groupBy({ by: ['status'], _count: { _all: true } }),
     db.fbAlert.findMany({ where: { resolved: false }, orderBy: { createdAt: 'desc' }, take: 10 }),
     db.fbDailyUsage.findMany({ where: { day } }),
+    policyState(),
   ]);
 
   return NextResponse.json({
@@ -32,7 +34,17 @@ export async function GET() {
       'Los workers publican con la sesión propia del usuario vía navegador real; no hay API de Meta para grupos (eliminada el 22/04/2024).',
       'Los estados son honestos: POSTED solo con postUrl verificable; FAILED con failReason real.',
       'Las campañas nacen DRAFT y requieren aprobación humana explícita (HITL, acción approve) antes de entrar en cola; este puente es solo lectura.',
+      'Toda operación Meta pasa por el motor de cumplimiento (META POLICY INTELLIGENCE); su estado se expone en meta.policy y NO es modificable por agentes.',
     ],
+    policy: {
+      overall: policy.overall,
+      overallReasons: policy.overallReasons,
+      engineEnabled: policy.engineEnabled,
+      killSwitch: policy.killSwitch,
+      criticalChangesOpen: policy.changes.bySeverity.CRITICO ?? 0,
+      fbGroupsFreshness: policy.fbGroupsFreshness,
+      note: 'Si overall=BLOQUEADO o DESACTUALIZADO, las operaciones Meta están retenidas; consultar /api/meta-policy y escalar a revisión humana.',
+    },
     workers: workers.map((w) => {
       const usage = usages.find((u) => u.workerId === w.id);
       return {

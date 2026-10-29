@@ -229,3 +229,15 @@ con su motivo exacto).
   borrador se aprueba, solo una campaña en cola/marcha se pausa, solo una
   pausada se reanuda. El informe P9 declara la aprobación (quién/cuándo o
   "BORRADOR sin aprobar"). *(hecho)*
+
+- **META POLICY INTELLIGENCE (mandato 30/10/2026)** El módulo consulta el motor
+  de cumplimiento antes de TODO vuelo: al crear campaña (403 si BLOQUEADO o
+  documentación desactualizada; borrador forzado si exige aprobación), al
+  aprobar (el HITL no anula bloqueos activos) y en cada claim del worker
+  (POLICY_HOLD: el worker no recibe jobs ni unions si el motor lo impide).
+  Cambios CRÍTICOS sin analizar en las fuentes que gobiernan Facebook bloquean
+  la operación hasta análisis humano. Anti-evasión explícito: prohibido
+  simular actividad humana o eludir controles de Meta; el puente agéntico
+  expone el estado de política en solo lectura y ningún agente puede
+  desactivar las restricciones. El apagado de emergencia detiene todo y solo
+  un humano lo levanta con nota auditada. *(hecho)*

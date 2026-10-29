@@ -6,6 +6,7 @@
 import { db } from '@/lib/db';
 import { runFullCycle } from '@/lib/cycle';
 import { isPaused } from '@/lib/orchestrator';
+import { runDueChecks } from '@/lib/meta-policy';
 
 export interface SchedulerTickResult {
   tickedAt: string;
@@ -129,10 +130,31 @@ export async function runScheduleNow(scheduleId: string): Promise<{ ok: boolean;
 // ─── Bucle interno (singleton) ─────────────────────────────────────
 
 interface SchedulerGlobal {
-  __comunitiScheduler?: { timer: ReturnType<typeof setInterval>; lastTick: string };
+  __comunitiScheduler?: { timer: ReturnType<typeof setInterval>; lastTick: string; lastPolicyRun: string | null };
 }
 
 const g = globalThis as typeof globalThis & SchedulerGlobal;
+
+/** Vigilancia de políticas Meta (META POLICY INTELLIGENCE): consulta las fuentes
+ * oficiales vencidas con throttle de 30 min. Fallo registrado, nunca silencio. */
+async function policyWatchTick(): Promise<void> {
+  const state = g.__comunitiScheduler;
+  if (state) {
+    const last = state.lastPolicyRun ? new Date(state.lastPolicyRun).getTime() : 0;
+    if (Date.now() - last < 30 * 60 * 1000) return; // throttle 30 min
+  }
+  try {
+    const res = await runDueChecks();
+    if (g.__comunitiScheduler) g.__comunitiScheduler.lastPolicyRun = new Date().toISOString();
+    if (res.ran > 0) {
+      const changed = res.results.filter((r) => r.changed).length;
+      const failed = res.results.filter((r) => r.status === 'FAILED' || r.status === 'BLOCKED').length;
+      console.log(`[policy-watch] ${res.ran} fuente(s) verificada(s), ${changed} cambio(s), ${failed} sin poder verificar`);
+    }
+  } catch (e) {
+    await db.errorLog.create({ data: { source: 'policy-watch', severity: 'ERROR', message: `Vigilancia de políticas falló: ${(e as Error).message}`, detailJson: '{}' } }).catch(() => undefined);
+  }
+}
 
 export function startSchedulerLoop(intervalMs = 60_000): { started: boolean; note: string } {
   if (g.__comunitiScheduler) return { started: false, note: 'El bucle del scheduler ya estaba activo' };
@@ -140,10 +162,12 @@ export function startSchedulerLoop(intervalMs = 60_000): { started: boolean; not
     runDueSchedules().catch(async (e) => {
       await db.errorLog.create({ data: { source: 'scheduler', severity: 'ERROR', message: `Tick falló: ${(e as Error).message}`, detailJson: '{}' } }).catch(() => undefined);
     });
+    // Vigilancia de políticas: mismo bucle, throttle propio de 30 minutos.
+    policyWatchTick().catch(() => undefined);
   }, intervalMs);
   // No retener el proceso si todo lo demás termina
   if (typeof timer.unref === 'function') timer.unref();
-  g.__comunitiScheduler = { timer, lastTick: new Date().toISOString() };
+  g.__comunitiScheduler = { timer, lastTick: new Date().toISOString(), lastPolicyRun: null };
   return { started: true, note: `Bucle del scheduler iniciado (intervalo ${Math.round(intervalMs / 1000)}s)` };
 }
 

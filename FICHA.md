@@ -117,3 +117,17 @@ proveedor no soporta un contrato → `CAPACITY_UNAVAILABLE`.
 - No copiar código, textos ni marcas de los 20 referentes (sala limpia).
 - No publicar nada real sin conector configurado + aprobación según modo.
 - No enviar mensajes masivos no solicitados ni inventar precios/políticas.
+
+## 11. META POLICY INTELLIGENCE — Centro de Cumplimiento Meta
+
+- **Capacidad central, no opcional**: toda operación relacionada con Meta consulta el motor de autorización antes de ejecutarse. Que una acción sea técnicamente posible no significa que Meta la autorice; la ausencia de información nunca es permiso.
+- **Fuentes oficiales vigiladas (26)**: políticas generales y contenido de Meta, desarrolladores/APIs, WhatsApp Business y legislación colombiana (Ley 1581/2012, Ley 1480/2011, SIC, DNDA, DIAN). Registro con URL oficial, producto, familia y frecuencia (24 h / semanal / revisión manual).
+- **Consulta honesta con evidencia**: cada consulta registra URL, instante, método y hash SHA-256 del texto normalizado. Si una fuente no responde o bloquea, se registra el fallo (nunca se simula una verificación) y existe el procedimiento alternativo: revisión humana desde el navegador, registrada con nota obligatoria y auditada.
+- **Versionado inmutable**: cada captura es una versión nueva (v1, v2, …) con hash y extracto; nunca se sobrescribe la anterior. Los cambios (nuevo, modificado, inaccesible, recuperado) se clasifican de forma determinista (CRÍTICO / ALTO / MEDIO / BAJO). Un cambio que solo afecta cifras/fechas o contenido dinámico se degrada a MEDIO como probable falso positivo de página rotativa.
+- **Motor de autorización (6 estados)**: PERMITIDO, PERMITIDO_CON_CONDICIONES, REQUIERE_APROBACION, NO_VERIFICADO, BLOQUEADO, POLITICA_DESACTUALIZADA. El peor veredicto gana. Cambios CRÍTICOS sin analizar bloquean las operaciones del producto afectado; documentación sin verificación reciente (14 días por defecto) retiene operaciones de alto riesgo; la lista central de exclusión veta objetivos (bajas respetadas en todos los módulos).
+- **Anti-evasión explícito**: prohibido diseñar funciones para simular actividad humana, ocultar automatización o eludir controles de Meta. Las reglas del motor viven en código, no son modificables por agentes y no existe endpoint agéntico de desactivación (el puente P11 es de solo lectura).
+- **HITL reforzado**: la publicación/unión automatizada exige siempre aprobación humana pre-vuelo (gate P2 de FB-GROUPS); el motor además puede forzar borrador si las condiciones lo exigen.
+- **Apagado de emergencia**: la parada (con razón obligatoria) bloquea toda operación Meta y queda como incidente CRÍTICO; solo un humano la levanta, con nota auditada.
+- **Panel (Gobierno → Centro de Cumplimiento Meta)**: semáforo general, KPIs, filtros por producto, fuentes con evidencia y revisión manual, análisis humano de cambios, informes diario/semanal/mensual que distinguen hechos verificados / interpretación técnica / recomendación preventiva, historial de decisiones e incidentes, simulador del motor.
+- **Vigilancia programada**: bucle interno con throttle de 30 min consulta las fuentes vencidas; fallo del vigilante se registra en ErrorLog, nunca en silencio.
+- **Base documental inicial**: el informe del administrador (fecha de referencia 08/10/2026) se incorpora como base de investigación en `docs/policy/BASE_DOCUMENTAL_INICIAL.md`, no como vigencia confirmada; cada afirmación relevante se verifica contra la fuente oficial correspondiente.

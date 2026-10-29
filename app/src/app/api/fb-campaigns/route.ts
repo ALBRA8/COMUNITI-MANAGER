@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { computeCap, todayKey } from '@/lib/fb-groups';
 import { computeRiskScore, riskInputFromCampaign } from '@/lib/fb-risk';
+import { authorize } from '@/lib/meta-policy';
 
 export const dynamic = 'force-dynamic';
 
@@ -71,7 +72,27 @@ export async function POST(req: NextRequest) {
   // P2 (gate pre-vuelo): por defecto la campaña nace DRAFT con jobs PENDING_APPROVAL;
   // el worker NO ve nada hasta que un humano aprueba (HITL formal, auditado).
   // body.approve=true conserva el flujo directo para scripts y pruebas.
-  const approveNow = body.approve === true;
+  let approveNow = body.approve === true;
+
+  // ── META POLICY INTELLIGENCE: consulta al motor ANTES de aceptar el trabajo.
+  // Que sea técnicamente posible no significa que Meta lo autorice: si el motor
+  // bloquea, no se crea la campaña; si exige aprobación, nace borrador sí o sí.
+  const policy = await authorize({
+    operation: 'FB_GROUP_POST',
+    approvedByHuman: approveNow,
+    actor: approveNow ? 'human' : 'human:campaign-draft',
+    note: `creación de campaña "${String(body.name).slice(0, 60)}"`,
+  });
+  if (policy.verdict === 'BLOQUEADO' || policy.verdict === 'POLITICA_DESACTUALIZADA') {
+    await db.auditEntry.create({ data: { actor: 'system:policy-engine', action: 'META_POLICY_BLOCK', targetType: 'FB_CAMPAIGN', targetId: 'create', allowed: false, reason: `Campaña "${String(body.name).slice(0, 60)}" rechazada por el motor: ${policy.reasons.join(' | ')}` } });
+    return NextResponse.json({ error: `Motor de cumplimiento Meta: ${policy.verdict}`, policy }, { status: 403 });
+  }
+  const forcedDraft = policy.verdict === 'REQUIERE_APROBACION' || policy.verdict === 'NO_VERIFICADO';
+  if (forcedDraft && approveNow) {
+    // El motor exige aprobación humana en condiciones actuales: la campaña nace
+    // borrador aunque el script pidiera aprobación directa (honestidad del gate).
+    approveNow = false;
+  }
 
   const groups = targets.length > 0
     ? await db.fbGroup.findMany({ where: { id: { in: targets }, excluded: false } })
@@ -125,10 +146,10 @@ export async function POST(req: NextRequest) {
   }
 
   await db.auditEntry.create({
-    data: { actor: 'human', action: 'FB_CAMPAIGN_CREATED', targetType: 'FB_CAMPAIGN', targetId: campaign.id, allowed: true, reason: `Campaña "${campaign.name}" con ${mode === 'profile' ? 1 : groups.length} objetivo(s), motor ${engine}, ventana ${campaign.windowStart}-${campaign.windowEnd}${mediaList.length ? `, ${mediaList.length} adjunto(s)${mediaMode === 'rotate' ? ' rotados' : ''}` : ''}${commentDelaySec ? `, bump-comment con ${commentDelaySec}s de espera` : ''}${boldStyle === 'unicode' ? ', negrita unicode' : ''} · riesgo pre-vuelo ${risk.score} (${risk.level})${approveNow ? ' · APROBADA al crear' : ' · BORRADOR pendiente de aprobación (el worker no la ve hasta aprobarla)'}` },
+    data: { actor: 'human', action: 'FB_CAMPAIGN_CREATED', targetType: 'FB_CAMPAIGN', targetId: campaign.id, allowed: true, reason: `Campaña "${campaign.name}" con ${mode === 'profile' ? 1 : groups.length} objetivo(s), motor ${engine}, ventana ${campaign.windowStart}-${campaign.windowEnd}${mediaList.length ? `, ${mediaList.length} adjunto(s)${mediaMode === 'rotate' ? ' rotados' : ''}` : ''}${commentDelaySec ? `, bump-comment con ${commentDelaySec}s de espera` : ''}${boldStyle === 'unicode' ? ', negrita unicode' : ''} · riesgo pre-vuelo ${risk.score} (${risk.level}) · política Meta: ${policy.verdict}${approveNow ? ' · APROBADA al crear' : ' · BORRADOR pendiente de aprobación (el worker no la ve hasta aprobarla)'}` },
   });
 
-  return NextResponse.json({ campaign: { id: campaign.id, name: campaign.name, status: campaign.status, approvedAt: campaign.approvedAt }, jobs: mode === 'profile' ? 1 : groups.length, risk: { score: risk.score, level: risk.level, factors: risk.factors, mitigations: risk.mitigations } });
+  return NextResponse.json({ campaign: { id: campaign.id, name: campaign.name, status: campaign.status, approvedAt: campaign.approvedAt }, jobs: mode === 'profile' ? 1 : groups.length, risk: { score: risk.score, level: risk.level, factors: risk.factors, mitigations: risk.mitigations }, policy: { verdict: policy.verdict, reasons: policy.reasons, forcedDraft } });
 }
 
 export async function PATCH(req: NextRequest) {
@@ -143,10 +164,18 @@ export async function PATCH(req: NextRequest) {
     if (campaign.status !== 'DRAFT') {
       return NextResponse.json({ error: `Solo un borrador se aprueba (estado actual: ${campaign.status})` }, { status: 409 });
     }
+    // ── META POLICY INTELLIGENCE: el motor se consulta también al aprobar.
+    // La aprobación humana satisface el HITL, pero NO anula bloqueos activos
+    // (apagado de emergencia, cambio crítico sin analizar, documentación vencida).
+    const policy = await authorize({ operation: 'FB_CAMPAIGN_APPROVAL', approvedByHuman: true, actor: 'human', note: `aprobación de campaña "${campaign.name}"` });
+    if (policy.verdict === 'BLOQUEADO' || policy.verdict === 'POLITICA_DESACTUALIZADA') {
+      await db.auditEntry.create({ data: { actor: 'system:policy-engine', action: 'META_POLICY_BLOCK', targetType: 'FB_CAMPAIGN', targetId: campaign.id, allowed: false, reason: `Aprobación de "${campaign.name}" denegada por el motor (${policy.verdict}): ${policy.reasons.join(' | ')}` } });
+      return NextResponse.json({ error: `Motor de cumplimiento Meta: ${policy.verdict}`, policy }, { status: 403 });
+    }
     const res = await db.fbJob.updateMany({ where: { campaignId: campaign.id, status: 'PENDING_APPROVAL' }, data: { status: 'QUEUED' } });
     await db.fbCampaign.update({ where: { id: campaign.id }, data: { status: 'QUEUED', approvedAt: new Date() } });
-    await db.auditEntry.create({ data: { actor: 'human', action: 'FB_CAMPAIGN_APPROVED', targetType: 'FB_CAMPAIGN', targetId: campaign.id, allowed: true, reason: `Campaña "${campaign.name}" APROBADA pre-vuelo por un humano: ${res.count} job(s) entran en cola (dentro de ventana y techo el worker los reclama)` } });
-    return NextResponse.json({ ok: true, approved: res.count });
+    await db.auditEntry.create({ data: { actor: 'human', action: 'FB_CAMPAIGN_APPROVED', targetType: 'FB_CAMPAIGN', targetId: campaign.id, allowed: true, reason: `Campaña "${campaign.name}" APROBADA pre-vuelo por un humano (política Meta: ${policy.verdict}): ${res.count} job(s) entran en cola (dentro de ventana y techo el worker los reclama)` } });
+    return NextResponse.json({ ok: true, approved: res.count, policy: { verdict: policy.verdict } });
   } else if (body.action === 'cancel') {
     if (campaign.status === 'CANCELLED') return NextResponse.json({ ok: true });
     await db.fbCampaign.update({ where: { id: campaign.id }, data: { status: 'CANCELLED' } });
