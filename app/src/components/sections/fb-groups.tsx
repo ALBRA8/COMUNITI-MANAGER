@@ -48,9 +48,9 @@ interface FbCampaignRow {
   id: string; name: string; mode: string; engine: string; status: string;
   createdAt: string; mediaCount: number; mediaMode: string; boldStyle: string;
   commentDelaySec: number; riskScore: number; riskLevel: string;
-  text: string; firstComment: string;
+  text: string; firstComment: string; approvedAt: string | null;
   windowStart: number; windowEnd: number;
-  counts: { total: number; queued: number; posted: number; failed: number; review: number };
+  counts: { total: number; queued: number; posted: number; failed: number; review: number; pendingApproval: number };
   jobs: FbJobRow[];
 }
 interface FbAlertRow {
@@ -81,11 +81,11 @@ const WORKER_DOT: Record<string, string> = {
   AWAITING_SESSION: 'bg-amber-500', PAUSED_ANTI_BAN: 'bg-red-500', CHALLENGE_DETECTED: 'bg-red-600 animate-pulse',
 };
 const JOB_STATUS_LABEL: Record<string, string> = {
-  QUEUED: 'En cola', LEASED: 'Asignado', POSTED: 'Publicado', FAILED: 'Fallido',
+  PENDING_APPROVAL: 'Por aprobar', QUEUED: 'En cola', LEASED: 'Asignado', POSTED: 'Publicado', FAILED: 'Fallido',
   SKIPPED: 'Omitido', PENDING_REVIEW: 'Revisión de admin', CANCELLED: 'Cancelado',
 };
 const JOB_STATUS_CHIP: Record<string, string> = {
-  QUEUED: CHIP_NEUTRAL, LEASED: CHIP_INFO, POSTED: CHIP_OK, FAILED: CHIP_BAD,
+  PENDING_APPROVAL: CHIP_WARN, QUEUED: CHIP_NEUTRAL, LEASED: CHIP_INFO, POSTED: CHIP_OK, FAILED: CHIP_BAD,
   SKIPPED: CHIP_NEUTRAL, PENDING_REVIEW: CHIP_WARN, CANCELLED: CHIP_NEUTRAL,
 };
 const JOIN_STATUS_LABEL: Record<string, string> = {
@@ -395,10 +395,10 @@ export function FbGroupsSection({ brandId, refresh }: SectionProps) {
         </CardHeader>
         <CardContent className="space-y-4">
           <CampaignForm busy={busy} brandId={brandId} groups={groups} workers={workers} library={mediaLib} onCreate={async (payload) => {
-            const data = await post('/api/fb-campaigns', payload, 'Campaña creada. El worker la recogerá dentro de la ventana horaria y del techo diario.');
+            const data = await post('/api/fb-campaigns', payload, 'Borrador de campaña creado. Apruébalo desde la lista para armarlo: el worker no ve nada sin aprobación.');
             if (data?.risk) {
               const r = data.risk as RiskResult;
-              setNotice({ msg: `Campaña creada · riesgo pre-vuelo ${r.score}/100 (${r.level})${r.mitigations.length ? ` · ${r.mitigations[0]}` : ''}`, ok: r.level !== 'ALTO' });
+              setNotice({ msg: `Borrador creado · riesgo pre-vuelo ${r.score}/100 (${r.level})${r.mitigations.length ? ` · ${r.mitigations[0]}` : ''} · púlsalo Aprobar en la lista para armarlo`, ok: r.level !== 'ALTO' });
             }
           }} />
           {campaigns.length > 0 && (
@@ -670,6 +670,7 @@ function CampaignForm({ busy, brandId, groups, workers, library, onCreate }: {
   const [boldStyle, setBoldStyle] = useState('none');
   const [windowStart, setWindowStart] = useState('7');
   const [windowEnd, setWindowEnd] = useState('21');
+  const [approveNow, setApproveNow] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
   const active = groups.filter((g) => !g.excluded);
   const mediaUrls = media.split('\n').map((s) => s.trim()).filter(Boolean).slice(0, 4);
@@ -751,6 +752,10 @@ function CampaignForm({ busy, brandId, groups, workers, library, onCreate }: {
             </SelectContent>
           </Select>
         </label>
+        <label className="flex items-center gap-1.5" title="Flujo directo: la campaña entra en cola al crear, sin paso de aprobación intermedio (auditado igual)">
+          <input type="checkbox" checked={approveNow} onChange={(e) => setApproveNow(e.target.checked)} />
+          Aprobar al crear (sin borrador intermedio)
+        </label>
       </div>
       <div className="flex flex-wrap gap-2 items-center">
         <Input className="h-8 max-w-md text-xs" placeholder="Primer comentario (opcional, p.ej. el enlace)" value={firstComment} onChange={(e) => setFirstComment(e.target.value)} />
@@ -785,10 +790,11 @@ function CampaignForm({ busy, brandId, groups, workers, library, onCreate }: {
             mediaMode: rotate && mediaUrls.length > 1 ? 'rotate' : 'all',
             windowStart: Number(windowStart), windowEnd: Number(windowEnd),
             targets: mode === 'profile' ? [] : selected,
+            approve: approveNow,
           });
-          setName(''); setText(''); setFirstComment(''); setMedia(''); setSelected([]); setRotate(false); setCommentDelaySec('0');
+          setName(''); setText(''); setFirstComment(''); setMedia(''); setSelected([]); setRotate(false); setCommentDelaySec('0'); setApproveNow(false);
         }}>
-        Crear campaña ({mode === 'profile' ? 1 : selected.length} objetivo{mode === 'profile' ? '' : 's'}{mediaUrls.length ? ` · ${mediaUrls.length} adjunto${mediaUrls.length > 1 ? 's' : ''}${rotate && mediaUrls.length > 1 ? ' rotados' : ''}` : ''})
+        Crear campaña ({mode === 'profile' ? 1 : selected.length} objetivo{mode === 'profile' ? '' : 's'}{mediaUrls.length ? ` · ${mediaUrls.length} adjunto${mediaUrls.length > 1 ? 's' : ''}${rotate && mediaUrls.length > 1 ? ' rotados' : ''}` : ''}{approveNow ? ' · aprobada al crear' : ' · como borrador'})
       </Button>
     </div>
   );
@@ -801,16 +807,40 @@ function CampaignRow({ campaign, busy, onChanged, setNotice }: {
   setNotice: (n: { msg: string; ok: boolean } | null) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [approving, setApproving] = useState(false);
   const c = campaign;
   const postedRatio = c.counts.total > 0 ? c.counts.posted / c.counts.total : 0;
+  const isDraft = c.status === 'DRAFT';
+  const CAMPAIGN_LABEL: Record<string, string> = { DRAFT: 'Borrador', QUEUED: 'En cola', RUNNING: 'En marcha', DONE: 'Terminada', PAUSED: 'Pausada', CANCELLED: 'Cancelada' };
   return (
-    <div className="rounded-lg border p-3 text-xs space-y-2 transition-colors hover:border-primary/30">
+    <div className={`rounded-lg border p-3 text-xs space-y-2 transition-colors hover:border-primary/30 ${isDraft ? 'border-amber-400/60 bg-amber-50/40 dark:border-amber-500/40 dark:bg-amber-500/5' : ''}`}>
+      {isDraft && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-300/70 bg-amber-50 px-2.5 py-1.5 dark:border-amber-500/40 dark:bg-amber-500/10">
+          <span className="text-[11px] leading-snug text-amber-900 dark:text-amber-200">
+            <b>Borrador pendiente de aprobación:</b> {c.counts.pendingApproval} job(s) en espera · el worker no ve nada hasta que un humano apruebe (HITL)
+          </span>
+          <Button size="sm" className="h-7 text-[11px] gap-1" disabled={busy || approving} onClick={async () => {
+            setApproving(true);
+            try {
+              const res = await fetch('/api/fb-campaigns', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ campaignId: c.id, action: 'approve' }) });
+              const data = await res.json().catch(() => ({}));
+              setNotice(res.ok ? { msg: `Campaña aprobada: ${data.approved ?? 0} job(s) en cola (dentro de ventana y techo el worker los reclama)`, ok: true } : { msg: data.error ?? 'No se pudo aprobar', ok: false });
+              await onChanged();
+            } finally {
+              setApproving(false);
+            }
+          }}>
+            Aprobar y programar
+          </Button>
+        </div>
+      )}
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2 flex-wrap min-w-0">
           <b className="text-[13px]">{c.name}</b>
           {c.riskLevel && <span className={RISK_CHIP[c.riskLevel] ?? CHIP_NEUTRAL} title="Score de riesgo pre-vuelo (instantánea al crear)">riesgo {c.riskScore} · {c.riskLevel}</span>}
           <span className={CHIP_NEUTRAL}>{c.mode === 'profile' ? 'perfil' : c.mode === 'page_in_group' ? 'Página en grupo' : 'grupos'}</span>
-          <Badge variant={c.status === 'DONE' ? 'default' : c.status === 'CANCELLED' || c.status === 'PAUSED' ? 'destructive' : 'secondary'}>{c.status}</Badge>
+          <Badge variant={c.status === 'DONE' ? 'default' : c.status === 'CANCELLED' || c.status === 'PAUSED' ? 'destructive' : 'secondary'}>{CAMPAIGN_LABEL[c.status] ?? c.status}</Badge>
+          {c.approvedAt && <span className={CHIP_NEUTRAL} title="Aprobación formal pre-vuelo (P2)">aprobada {new Date(c.approvedAt).toLocaleDateString('es-CO')}</span>}
         </div>
         <Button size="sm" variant="ghost" className="h-7 text-[11px] gap-1" onClick={() => setOpen(!open)} aria-expanded={open}>
           {open ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
@@ -824,7 +854,7 @@ function CampaignRow({ campaign, busy, onChanged, setNotice }: {
         <div className="bg-red-400" style={{ width: `${(c.counts.failed / Math.max(1, c.counts.total)) * 100}%` }} />
       </div>
       <p className="text-muted-foreground flex flex-wrap gap-x-2 gap-y-0.5">
-        <span>{c.counts.posted} publicados</span>· <span>{c.counts.queued} en cola</span>· <span>{c.counts.failed} fallidos</span>· <span>{c.counts.review} en revisión de admin</span>· <span>total {c.counts.total}</span>
+        <span>{c.counts.posted} publicados</span>· <span>{c.counts.queued} en cola</span>· {c.counts.pendingApproval > 0 && <><span>{c.counts.pendingApproval} por aprobar</span>· </>}{c.counts.failed > 0 && <><span>{c.counts.failed} fallidos</span>· </>}<span>{c.counts.review} en revisión de admin</span>· <span>total {c.counts.total}</span>
         {c.mediaCount > 0 && <>· <span>{c.mediaCount} adjunto(s){c.mediaMode === 'rotate' ? ' rotados por grupo' : ''}</span></>}
         {c.boldStyle === 'unicode' && <>· <span>negrita unicode</span></>}
         {c.commentDelaySec > 0 && <>· <span>comentario tras {c.commentDelaySec}s</span></>}
@@ -863,21 +893,25 @@ function CampaignRow({ campaign, busy, onChanged, setNotice }: {
             <Printer className="h-3.5 w-3.5" aria-hidden /> Informe
           </Button>
         </a>
-        <Button size="sm" variant="outline" className="h-7 text-xs" disabled={busy} onClick={async () => {
-          await fetch('/api/fb-campaigns', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ campaignId: c.id, action: 'pause' }) });
-          setNotice({ msg: 'Campaña pausada', ok: true }); await onChanged();
-        }}>
-          Pausar
-        </Button>
-        <Button size="sm" variant="outline" className="h-7 text-xs" disabled={busy} onClick={async () => {
-          await fetch('/api/fb-campaigns', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ campaignId: c.id, action: 'resume' }) });
-          setNotice({ msg: 'Campaña reanudada', ok: true }); await onChanged();
-        }}>
-          Reanudar
-        </Button>
+        {!isDraft && (
+          <>
+            <Button size="sm" variant="outline" className="h-7 text-xs" disabled={busy} onClick={async () => {
+              await fetch('/api/fb-campaigns', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ campaignId: c.id, action: 'pause' }) });
+              setNotice({ msg: 'Campaña pausada', ok: true }); await onChanged();
+            }}>
+              Pausar
+            </Button>
+            <Button size="sm" variant="outline" className="h-7 text-xs" disabled={busy} onClick={async () => {
+              await fetch('/api/fb-campaigns', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ campaignId: c.id, action: 'resume' }) });
+              setNotice({ msg: 'Campaña reanudada', ok: true }); await onChanged();
+            }}>
+              Reanudar
+            </Button>
+          </>
+        )}
         <Button size="sm" variant="destructive" className="h-7 text-xs" disabled={busy} onClick={async () => {
           await fetch('/api/fb-campaigns', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ campaignId: c.id, action: 'cancel' }) });
-          setNotice({ msg: 'Campaña cancelada', ok: true }); await onChanged();
+          setNotice({ msg: isDraft ? 'Borrador cancelado' : 'Campaña cancelada', ok: true }); await onChanged();
         }}>
           Cancelar
         </Button>

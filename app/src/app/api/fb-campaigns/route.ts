@@ -28,6 +28,7 @@ export async function GET() {
       posted: c.jobs.filter((j) => j.status === 'POSTED').length,
       failed: c.jobs.filter((j) => j.status === 'FAILED').length,
       review: c.jobs.filter((j) => j.status === 'PENDING_REVIEW').length,
+      pendingApproval: c.jobs.filter((j) => j.status === 'PENDING_APPROVAL').length,
     },
     jobs: c.jobs.map((j) => ({ ...j, workerName: j.worker?.name ?? null, worker: undefined })),
     };
@@ -67,6 +68,10 @@ export async function POST(req: NextRequest) {
   const mediaMode = body.mediaMode === 'rotate' ? 'rotate' : 'all';
   const boldStyle = body.boldStyle === 'unicode' ? 'unicode' : 'none';
   const commentDelaySec = Math.max(0, Math.min(3600, Number.isFinite(body.commentDelaySec) ? Number(body.commentDelaySec) : 0));
+  // P2 (gate pre-vuelo): por defecto la campaña nace DRAFT con jobs PENDING_APPROVAL;
+  // el worker NO ve nada hasta que un humano aprueba (HITL formal, auditado).
+  // body.approve=true conserva el flujo directo para scripts y pruebas.
+  const approveNow = body.approve === true;
 
   const groups = targets.length > 0
     ? await db.fbGroup.findMany({ where: { id: { in: targets }, excluded: false } })
@@ -106,22 +111,24 @@ export async function POST(req: NextRequest) {
       commentDelaySec,
       riskScore: risk.score,
       riskLevel: risk.level,
+      status: approveNow ? 'QUEUED' : 'DRAFT',
+      approvedAt: approveNow ? new Date() : null,
     },
   });
 
   if (mode === 'profile') {
-    await db.fbJob.create({ data: { campaignId: campaign.id, targetKind: 'profile', targetName: 'PERFIL', targetUrl: 'https://www.facebook.com/', mediaUrls } });
+    await db.fbJob.create({ data: { campaignId: campaign.id, targetKind: 'profile', targetName: 'PERFIL', targetUrl: 'https://www.facebook.com/', mediaUrls, status: approveNow ? 'QUEUED' : 'PENDING_APPROVAL' } });
   } else {
     for (const g of groups) {
-      await db.fbJob.create({ data: { campaignId: campaign.id, targetKind: mode, targetName: g.name, targetUrl: g.url || `https://www.facebook.com/groups/${g.fbId}`, groupId: g.id, mediaUrls } });
+      await db.fbJob.create({ data: { campaignId: campaign.id, targetKind: mode, targetName: g.name, targetUrl: g.url || `https://www.facebook.com/groups/${g.fbId}`, groupId: g.id, mediaUrls, status: approveNow ? 'QUEUED' : 'PENDING_APPROVAL' } });
     }
   }
 
   await db.auditEntry.create({
-    data: { actor: 'human', action: 'FB_CAMPAIGN_CREATED', targetType: 'FB_CAMPAIGN', targetId: campaign.id, allowed: true, reason: `Campaña "${campaign.name}" con ${mode === 'profile' ? 1 : groups.length} objetivo(s), motor ${engine}, ventana ${campaign.windowStart}-${campaign.windowEnd}${mediaList.length ? `, ${mediaList.length} adjunto(s)${mediaMode === 'rotate' ? ' rotados' : ''}` : ''}${commentDelaySec ? `, bump-comment con ${commentDelaySec}s de espera` : ''}${boldStyle === 'unicode' ? ', negrita unicode' : ''} · riesgo pre-vuelo ${risk.score} (${risk.level})` },
+    data: { actor: 'human', action: 'FB_CAMPAIGN_CREATED', targetType: 'FB_CAMPAIGN', targetId: campaign.id, allowed: true, reason: `Campaña "${campaign.name}" con ${mode === 'profile' ? 1 : groups.length} objetivo(s), motor ${engine}, ventana ${campaign.windowStart}-${campaign.windowEnd}${mediaList.length ? `, ${mediaList.length} adjunto(s)${mediaMode === 'rotate' ? ' rotados' : ''}` : ''}${commentDelaySec ? `, bump-comment con ${commentDelaySec}s de espera` : ''}${boldStyle === 'unicode' ? ', negrita unicode' : ''} · riesgo pre-vuelo ${risk.score} (${risk.level})${approveNow ? ' · APROBADA al crear' : ' · BORRADOR pendiente de aprobación (el worker no la ve hasta aprobarla)'}` },
   });
 
-  return NextResponse.json({ campaign: { id: campaign.id, name: campaign.name }, jobs: mode === 'profile' ? 1 : groups.length, risk: { score: risk.score, level: risk.level, factors: risk.factors, mitigations: risk.mitigations } });
+  return NextResponse.json({ campaign: { id: campaign.id, name: campaign.name, status: campaign.status, approvedAt: campaign.approvedAt }, jobs: mode === 'profile' ? 1 : groups.length, risk: { score: risk.score, level: risk.level, factors: risk.factors, mitigations: risk.mitigations } });
 }
 
 export async function PATCH(req: NextRequest) {
@@ -130,13 +137,30 @@ export async function PATCH(req: NextRequest) {
   const campaign = await db.fbCampaign.findUnique({ where: { id: String(body.campaignId) } });
   if (!campaign) return NextResponse.json({ error: 'No encontrada' }, { status: 404 });
 
-  if (body.action === 'cancel') {
+  if (body.action === 'approve') {
+    // P2: aprobación formal pre-vuelo. Solo un borrador se aprueba; deja rastro
+    // auditado (quién y cuándo) y es lo que arma la campaña para el worker.
+    if (campaign.status !== 'DRAFT') {
+      return NextResponse.json({ error: `Solo un borrador se aprueba (estado actual: ${campaign.status})` }, { status: 409 });
+    }
+    const res = await db.fbJob.updateMany({ where: { campaignId: campaign.id, status: 'PENDING_APPROVAL' }, data: { status: 'QUEUED' } });
+    await db.fbCampaign.update({ where: { id: campaign.id }, data: { status: 'QUEUED', approvedAt: new Date() } });
+    await db.auditEntry.create({ data: { actor: 'human', action: 'FB_CAMPAIGN_APPROVED', targetType: 'FB_CAMPAIGN', targetId: campaign.id, allowed: true, reason: `Campaña "${campaign.name}" APROBADA pre-vuelo por un humano: ${res.count} job(s) entran en cola (dentro de ventana y techo el worker los reclama)` } });
+    return NextResponse.json({ ok: true, approved: res.count });
+  } else if (body.action === 'cancel') {
+    if (campaign.status === 'CANCELLED') return NextResponse.json({ ok: true });
     await db.fbCampaign.update({ where: { id: campaign.id }, data: { status: 'CANCELLED' } });
-    await db.fbJob.updateMany({ where: { campaignId: campaign.id, status: { in: ['QUEUED', 'LEASED'] } }, data: { status: 'CANCELLED', leaseUntil: null } });
+    await db.fbJob.updateMany({ where: { campaignId: campaign.id, status: { in: ['PENDING_APPROVAL', 'QUEUED', 'LEASED'] } }, data: { status: 'CANCELLED', leaseUntil: null } });
   } else if (body.action === 'pause') {
+    if (campaign.status !== 'QUEUED' && campaign.status !== 'RUNNING') {
+      return NextResponse.json({ error: `Solo se pausa una campaña en cola o en marcha (estado actual: ${campaign.status}); un borrador se aprueba o se cancela` }, { status: 409 });
+    }
     await db.fbCampaign.update({ where: { id: campaign.id }, data: { status: 'PAUSED' } });
     await db.fbJob.updateMany({ where: { campaignId: campaign.id, status: 'LEASED' }, data: { status: 'QUEUED', leaseUntil: null } });
   } else if (body.action === 'resume') {
+    if (campaign.status !== 'PAUSED') {
+      return NextResponse.json({ error: `Solo se reanuda una campaña pausada (estado actual: ${campaign.status})` }, { status: 409 });
+    }
     await db.fbCampaign.update({ where: { id: campaign.id }, data: { status: 'QUEUED' } });
   } else {
     return NextResponse.json({ error: 'Acción no soportada' }, { status: 400 });

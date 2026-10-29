@@ -31,7 +31,7 @@ export async function GET() {
     honesty: [
       'Los workers publican con la sesión propia del usuario vía navegador real; no hay API de Meta para grupos (eliminada el 22/04/2024).',
       'Los estados son honestos: POSTED solo con postUrl verificable; FAILED con failReason real.',
-      'Este resumen es lectura; crear campañas requiere pasar por POST /api/fb-campaigns y aprobación humana (HITL).',
+      'Las campañas nacen DRAFT y requieren aprobación humana explícita (HITL, acción approve) antes de entrar en cola; este puente es solo lectura.',
     ],
     workers: workers.map((w) => {
       const usage = usages.find((u) => u.workerId === w.id);
@@ -52,6 +52,7 @@ export async function GET() {
         failed: c.jobs.filter((j) => j.status === 'FAILED').length,
         queued: c.jobs.filter((j) => j.status === 'QUEUED' || j.status === 'LEASED').length,
         review: c.jobs.filter((j) => j.status === 'PENDING_REVIEW').length,
+        pendingApproval: c.jobs.filter((j) => j.status === 'PENDING_APPROVAL').length,
       },
     })),
     joinTasks: Object.fromEntries(joinCounts.map((r) => [r.status, r._count._all])),
@@ -60,7 +61,7 @@ export async function GET() {
     capabilities: {
       readSummary: 'GET /api/fb-agent/fb-groups',
       readCampaigns: 'GET /api/fb-campaigns',
-      createCampaign: 'POST /api/fb-campaigns (pasa por gauge de riesgo y HITL del operador)',
+      createCampaign: 'POST /api/fb-campaigns (nace DRAFT; el operador aprueba con PATCH action=approve; HITL)',
     },
   });
 }

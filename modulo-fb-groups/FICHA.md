@@ -219,3 +219,13 @@ con su motivo exacto).
   Tests: scripts/test-besttime.ts (bun, 10/10), scripts/test-p8-p12.cjs (24/24),
   regresiones P7 25/25, P1 11/11, P6 24/24, verificación en navegador con capturas.
   *(hecho)*
+- **P2-APPROVED** Gate pre-vuelo explícito (destripe Metricool §7, "aprobación
+  formal de la variante antes de la ventana"): las campañas nacen DRAFT con jobs
+  PENDING_APPROVAL — el worker NO las ve hasta que un humano aprueba (PATCH
+  action=approve, auditado como FB_CAMPAIGN_APPROVED con timestamp approvedAt).
+  El formulario ofrece "Crear y aprobar" para el flujo directo; la lista marca
+  los borradores en ámbar con "Aprobar y programar". Estados nuevos: FbCampaign
+  DRAFT + approvedAt; FbJob PENDING_APPROVAL. Validaciones honestas: solo un
+  borrador se aprueba, solo una campaña en cola/marcha se pausa, solo una
+  pausada se reanuda. El informe P9 declara la aprobación (quién/cuándo o
+  "BORRADOR sin aprobar"). *(hecho)*

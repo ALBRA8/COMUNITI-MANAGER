@@ -10,13 +10,14 @@ export const dynamic = 'force-dynamic';
 // infladas: si no hay engagement, no se promete. Es el entregable de agencia.
 
 const JOB_LABEL: Record<string, string> = {
-  QUEUED: 'En cola', LEASED: 'Asignado', POSTED: 'Publicado', FAILED: 'Fallido',
+  PENDING_APPROVAL: 'Por aprobar', QUEUED: 'En cola', LEASED: 'Asignado', POSTED: 'Publicado', FAILED: 'Fallido',
   SKIPPED: 'Omitido', PENDING_REVIEW: 'Revisión de admin', CANCELLED: 'Cancelado',
 };
 const CHIP: Record<string, string> = {
   POSTED: 'bg-emerald-100 text-emerald-800',
   FAILED: 'bg-red-100 text-red-800',
   PENDING_REVIEW: 'bg-amber-100 text-amber-800',
+  PENDING_APPROVAL: 'bg-amber-100 text-amber-800',
   LEASED: 'bg-teal-100 text-teal-800',
 };
 const chipFor = (s: string) => CHIP[s] ?? 'bg-zinc-100 text-zinc-700';
@@ -98,6 +99,7 @@ export default async function CampaignReport({ params }: { params: Promise<{ cam
           <p><b>Primer comentario:</b> {campaign.firstComment ? `sí${campaign.commentDelaySec > 0 ? ` (tras ${campaign.commentDelaySec}s ±15% jitter)` : ' (inmediato)'}` : 'no'}</p>
           {campaign.boldStyle === 'unicode' && <p><b>Énfasis:</b> negrita unicode en *segmentos* marcados.</p>}
           <p><b>Workers:</b> {workers.length ? workers.join(', ') : 'sin asignación aún'}</p>
+          <p><b>Aprobación pre-vuelo:</b> {campaign.approvedAt ? `aprobada por un humano el ${fmt(campaign.approvedAt as Date)}` : campaign.status === 'DRAFT' ? 'BORRADOR sin aprobar: el worker no la ve' : 'sin registro de aprobación'}</p>
           <p><b>Primera publicación:</b> {fmt(firstPost as Date | null)}</p>
           <p><b>Última publicación:</b> {fmt(lastPost as Date | null)}</p>
         </section>

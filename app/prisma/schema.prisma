@@ -379,7 +379,8 @@ model FbCampaign {
   boldStyle    String   @default("none") // none | unicode: convierte *segmentos* del texto en negrita unicode
   riskScore    Int      @default(0) // score de riesgo pre-vuelo 0-100 (instantánea al crear, peor caso de cuenta)
   riskLevel    String   @default("") // BAJO | MEDIO | ALTO (etiqueta del score al crear)
-  status       String   @default("QUEUED") // QUEUED | RUNNING | DONE | PAUSED | CANCELLED
+  status       String   @default("DRAFT") // DRAFT | QUEUED | RUNNING | DONE | PAUSED | CANCELLED (DRAFT = pendiente de aprobación HITL)
+  approvedAt   DateTime? // cuándo la aprobó un humano (P2: gate pre-vuelo explícito)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -397,7 +398,7 @@ model FbJob {
   variant       String    @default("") // texto final tras spintax/IA
   variantSource String    @default("base") // base | spintax | ai_rewrite
   mediaUrls     String    @default("[]") // copia de los adjuntos de la campaña al crear el job
-  status        String    @default("QUEUED") // QUEUED | LEASED | POSTED | FAILED | SKIPPED | PENDING_REVIEW | CANCELLED
+  status        String    @default("PENDING_APPROVAL") // PENDING_APPROVAL | QUEUED | LEASED | POSTED | FAILED | SKIPPED | PENDING_REVIEW | CANCELLED (P2: el worker no ve jobs sin aprobar)
   leaseUntil    DateTime?
   attempts      Int       @default(0)
   postUrl       String    @default("")
