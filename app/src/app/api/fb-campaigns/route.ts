@@ -11,7 +11,7 @@ export async function GET() {
     orderBy: { createdAt: 'desc' },
     include: {
       jobs: {
-        select: { id: true, status: true, targetName: true, targetKind: true, variantSource: true, postUrl: true, failReason: true, postedAt: true, attempts: true, worker: { select: { name: true } } },
+        select: { id: true, status: true, targetName: true, targetKind: true, variantSource: true, postUrl: true, failReason: true, postedAt: true, updatedAt: true, attempts: true, worker: { select: { name: true } } },
         orderBy: { createdAt: 'asc' },
       },
     },

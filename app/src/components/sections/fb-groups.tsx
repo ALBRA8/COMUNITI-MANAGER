@@ -4,8 +4,10 @@
 // FICHA: modulo-fb-groups/FICHA.md — workers, grupos, auto-join, campañas y anti-ban.
 // Rediseño visual: franja de KPIs, gauge de riesgo pre-vuelo, log de entrega por
 // grupo y controles de las mejoras P7-P8 (rotación, bump-comment, bold, proxy).
+// Destripe Metricool (P8-P12): calendario editorial, mejores horas con datos
+// propios, biblioteca de media por marca, informe de campaña imprimible.
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -18,7 +20,10 @@ import type { RiskInput, RiskResult } from '@/lib/fb-risk';
 import {
   UsersRound, Users, Send, ShieldAlert, ShieldCheck, ImageIcon,
   MessageCircle, ChevronDown, ChevronUp, Radio, Activity, AlertTriangle,
+  CalendarDays, Clock, Library, Printer,
 } from 'lucide-react';
+import { buildBestTime, DAY_LABELS_ES } from '@/lib/fb-besttime';
+import type { HeatCell } from '@/lib/fb-besttime';
 import type { SectionProps } from '@/app/page';
 
 interface FbWorkerRow {
@@ -34,13 +39,17 @@ interface FbGroupRow {
 interface FbJobRow {
   id: string; status: string; targetName: string; targetKind: string;
   variantSource: string; postUrl: string; failReason: string;
-  postedAt: string | null; attempts: number; workerName: string | null;
+  postedAt: string | null; updatedAt: string | null; attempts: number; workerName: string | null;
+}
+interface FbMediaRow {
+  id: string; brandId: string | null; label: string; url: string; createdAt: string;
 }
 interface FbCampaignRow {
   id: string; name: string; mode: string; engine: string; status: string;
   createdAt: string; mediaCount: number; mediaMode: string; boldStyle: string;
   commentDelaySec: number; riskScore: number; riskLevel: string;
   text: string; firstComment: string;
+  windowStart: number; windowEnd: number;
   counts: { total: number; queued: number; posted: number; failed: number; review: number };
   jobs: FbJobRow[];
 }
@@ -97,17 +106,19 @@ export function FbGroupsSection({ brandId, refresh }: SectionProps) {
   const [campaigns, setCampaigns] = useState<FbCampaignRow[]>([]);
   const [joinTasks, setJoinTasks] = useState<FbJoinTaskRow[]>([]);
   const [joinCounts, setJoinCounts] = useState<Record<string, number>>({});
+  const [mediaLib, setMediaLib] = useState<FbMediaRow[]>([]);
   const [secretShown, setSecretShown] = useState<string>('');
   const [notice, setNotice] = useState<{ msg: string; ok: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const [w, g, c, j] = await Promise.all([
+      const [w, g, c, j, m] = await Promise.all([
         fetch('/api/fb-workers').then((r) => r.json()),
         fetch('/api/fb-groups').then((r) => r.json()),
         fetch('/api/fb-campaigns').then((r) => r.json()),
         fetch('/api/fb-joins').then((r) => r.json()),
+        fetch(`/api/fb-media${brandId ? `?brandId=${brandId}` : ''}`).then((r) => r.json()),
       ]);
       setWorkers(w.workers ?? []);
       setAlerts(w.alerts ?? []);
@@ -115,10 +126,11 @@ export function FbGroupsSection({ brandId, refresh }: SectionProps) {
       setCampaigns(c.campaigns ?? []);
       setJoinTasks(j.tasks ?? []);
       setJoinCounts(j.counts ?? {});
+      setMediaLib(m.media ?? []);
     } catch {
       setNotice({ msg: 'No se pudo cargar el módulo FB-GROUPS', ok: false });
     }
-  }, []);
+  }, [brandId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -364,6 +376,17 @@ export function FbGroupsSection({ brandId, refresh }: SectionProps) {
         </CardContent>
       </Card>
 
+      {/* Calendario editorial (P8) */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center gap-2 text-sm"><CalendarDays className="h-4 w-4 text-primary" /> Calendario editorial</CardTitle>
+          <CardDescription>La semana vista en tiempo: campañas activas como agenda viva y cada publicación real en el día en que ocurrió. Nada especulativo: solo hechos con fecha (postedAt) y lo que sigue en cola.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <WeekCalendar campaigns={campaigns} />
+        </CardContent>
+      </Card>
+
       {/* Campañas */}
       <Card>
         <CardHeader className="pb-2">
@@ -371,7 +394,7 @@ export function FbGroupsSection({ brandId, refresh }: SectionProps) {
           <CardDescription>Un texto aprobado → una variante única por grupo (spintax determinista; reescritura IA si el nivel L2/L3 lo permite). El worker tira de los jobs con leases anti-doble-disparo.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <CampaignForm busy={busy} brandId={brandId} groups={groups} workers={workers} onCreate={async (payload) => {
+          <CampaignForm busy={busy} brandId={brandId} groups={groups} workers={workers} library={mediaLib} onCreate={async (payload) => {
             const data = await post('/api/fb-campaigns', payload, 'Campaña creada. El worker la recogerá dentro de la ventana horaria y del techo diario.');
             if (data?.risk) {
               const r = data.risk as RiskResult;
@@ -383,6 +406,28 @@ export function FbGroupsSection({ brandId, refresh }: SectionProps) {
               {campaigns.map((c) => <CampaignRow key={c.id} campaign={c} busy={busy} onChanged={load} setNotice={setNotice} />)}
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Mejores horas (P10, destripe Metricool) */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center gap-2 text-sm"><Clock className="h-4 w-4 text-primary" /> Mejores horas (datos propios)</CardTitle>
+          <CardDescription>Heatmap hora×día construido SOLO con tus entregas reales: verde = tasa de éxito alta, rojo = dominio de fallos. Sin magia de terceros, sin datos de nadie más: la evidencia acumulada de tu propia cuenta.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <BestTimeCard campaigns={campaigns} />
+        </CardContent>
+      </Card>
+
+      {/* Biblioteca de media (P12, destripe Metricool) */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center gap-2 text-sm"><Library className="h-4 w-4 text-primary" /> Biblioteca de media{brandId ? ' (marca actual)' : ''}</CardTitle>
+          <CardDescription>URLs reutilizables por marca (o globales) listas para adjuntar desde el formulario de campañas. Misma validación que los adjuntos: URL http(s) o ruta local del worker.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <MediaLibrary media={mediaLib} busy={busy} brandId={brandId} onChanged={load} setNotice={setNotice} />
         </CardContent>
       </Card>
 
@@ -608,10 +653,11 @@ function RiskGauge({ input, hasWorker }: { input: RiskInput; hasWorker: boolean 
   );
 }
 
-function CampaignForm({ busy, brandId, groups, workers, onCreate }: {
+function CampaignForm({ busy, brandId, groups, workers, library, onCreate }: {
   busy: boolean; brandId: string | null;
   groups: FbGroupRow[];
   workers: FbWorkerRow[];
+  library: FbMediaRow[];
   onCreate: (payload: Record<string, unknown>) => Promise<void>;
 }) {
   const [name, setName] = useState('');
@@ -670,6 +716,27 @@ function CampaignForm({ busy, brandId, groups, workers, onCreate }: {
       </div>
       <Textarea className="text-xs min-h-[72px]" placeholder="Texto base del post (aprobado o del operador). {Spintax|opcional} soportado; con énfasis unicode puedes marcar *palabras clave*." value={text} onChange={(e) => setText(e.target.value)} />
       <Textarea className="text-xs min-h-[48px]" placeholder="Adjuntos (opcional): una imagen por línea, máx 4. URL http(s) accesible por el worker o ruta local de su máquina." value={media} onChange={(e) => setMedia(e.target.value)} />
+      {library.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-[11px] text-muted-foreground">Biblioteca:</span>
+          {library.slice(0, 12).map((m) => {
+            const picked = mediaUrls.includes(m.url);
+            return (
+              <button key={m.id} type="button" disabled={busy || (!picked && mediaUrls.length >= 4)}
+                className={`rounded-full border px-2 py-0.5 text-[10px] transition-colors disabled:opacity-40 ${picked ? 'border-primary bg-primary/10 text-primary' : 'text-muted-foreground hover:border-primary/40'}`}
+                title={picked ? 'Quitar de los adjuntos' : 'Añadir a los adjuntos (máx 4)'}
+                onClick={() => {
+                  setMedia((prev) => {
+                    const lines = prev.split('\n').map((s) => s.trim()).filter(Boolean);
+                    return (picked ? lines.filter((l) => l !== m.url) : [...lines, m.url]).join('\n');
+                  });
+                }}>
+                {picked ? '−' : '+'} {m.label || m.url.slice(0, 28)}
+              </button>
+            );
+          })}
+        </div>
+      )}
       <div className="flex flex-wrap gap-x-4 gap-y-2">
         <label className={`flex items-center gap-1.5 ${mediaUrls.length > 1 ? '' : 'opacity-50'}`} title={mediaUrls.length > 1 ? 'Cada grupo recibe una imagen distinta del pool (rotación determinista)' : 'Necesitas 2+ adjuntos para rotar'}>
           <input type="checkbox" checked={rotate} disabled={mediaUrls.length <= 1} onChange={(e) => setRotate(e.target.checked)} />
@@ -791,6 +858,11 @@ function CampaignRow({ campaign, busy, onChanged, setNotice }: {
         </div>
       )}
       <div className="flex gap-1.5">
+        <a href={`/reports/${c.id}`} target="_blank" rel="noreferrer" className="no-underline">
+          <Button size="sm" variant="outline" className="h-7 gap-1 text-xs">
+            <Printer className="h-3.5 w-3.5" aria-hidden /> Informe
+          </Button>
+        </a>
         <Button size="sm" variant="outline" className="h-7 text-xs" disabled={busy} onClick={async () => {
           await fetch('/api/fb-campaigns', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ campaignId: c.id, action: 'pause' }) });
           setNotice({ msg: 'Campaña pausada', ok: true }); await onChanged();
@@ -811,6 +883,235 @@ function CampaignRow({ campaign, busy, onChanged, setNotice }: {
         </Button>
         {postedRatio === 1 && c.counts.total > 0 && <span className={`ml-auto self-center ${CHIP_OK}`} title="Todos los jobs en estado terminal">completa</span>}
       </div>
+    </div>
+  );
+}
+
+// ─── Calendario editorial (P8, destripe Metricool) ────────────────
+
+interface CalItem {
+  campaignName: string;
+  targetName: string;
+  status: string;
+  postUrl: string;
+}
+
+const dayKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+function WeekCalendar({ campaigns }: { campaigns: FbCampaignRow[] }) {
+  const [offset, setOffset] = useState(0);
+
+  // Bitácora: solo hechos con fecha real (postedAt). Lo pendiente va en la agenda viva.
+  const byDay = useMemo(() => {
+    const map = new Map<string, CalItem[]>();
+    for (const c of campaigns) {
+      for (const j of c.jobs) {
+        if (!j.postedAt) continue;
+        const arr = map.get(dayKey(new Date(j.postedAt))) ?? [];
+        arr.push({ campaignName: c.name, targetName: j.targetName, status: j.status, postUrl: j.postUrl });
+        map.set(dayKey(new Date(j.postedAt)), arr);
+      }
+    }
+    return map;
+  }, [campaigns]);
+
+  const monday = useMemo(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() - ((d.getDay() + 6) % 7) + offset * 7);
+    return d;
+  }, [offset]);
+
+  const days = useMemo(() => Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    return d;
+  }), [monday]);
+
+  const rangeLabel = `${days[0].getDate()} ${days[0].toLocaleDateString('es-CO', { month: 'short' })} – ${days[6].getDate()} ${days[6].toLocaleDateString('es-CO', { month: 'short' })} ${days[6].getFullYear()}`;
+  const today = dayKey(new Date());
+  const agenda = campaigns.filter((c) => ['QUEUED', 'RUNNING', 'PAUSED'].includes(c.status) && c.counts.queued > 0);
+
+  return (
+    <div className="space-y-2 text-xs">
+      <div className="flex items-center gap-1.5">
+        <Button size="sm" variant="outline" className="h-7 px-2.5 text-xs" onClick={() => setOffset((o) => o - 1)} aria-label="Semana anterior">‹</Button>
+        <Button size="sm" variant="outline" className="h-7 text-xs" disabled={offset === 0} onClick={() => setOffset(0)}>Hoy</Button>
+        <Button size="sm" variant="outline" className="h-7 px-2.5 text-xs" onClick={() => setOffset((o) => o + 1)} aria-label="Semana siguiente">›</Button>
+        <b className="ml-1">{rangeLabel}</b>
+        <span className="ml-auto hidden text-[11px] text-muted-foreground sm:inline">bitácora real: cada tarjeta es una publicación con fecha (postedAt)</span>
+      </div>
+      {agenda.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-dashed p-2">
+          <span className="text-[11px] font-medium text-muted-foreground">Agenda viva:</span>
+          {agenda.map((c) => (
+            <span key={c.id} className={CHIP_INFO} title={`ventana ${c.windowStart}:00–${c.windowEnd}:00 · ${c.counts.failed} fallidos`}>
+              {c.name} · {c.counts.queued} en cola (vent. {c.windowStart}–{c.windowEnd})
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="grid grid-cols-7 gap-1.5">
+        {days.map((d, i) => {
+          const key = dayKey(d);
+          const items = byDay.get(key) ?? [];
+          const postedN = items.filter((it) => it.status === 'POSTED').length;
+          const badN = items.length - postedN;
+          return (
+            <div key={key} className={`min-h-[96px] rounded-lg border p-1.5 transition-colors ${key === today ? 'border-primary/50 bg-primary/5' : ''}`} aria-label={`${key}: ${items.length} publicación(es)`}>
+              <p className={`flex items-center justify-between text-[10px] ${key === today ? 'font-semibold text-primary' : 'text-muted-foreground'}`}>
+                <span>{['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom'][i]} {d.getDate()}</span>
+                {items.length > 0 && <span className="tabular-nums">{postedN > 0 ? postedN : ''}{badN > 0 ? `·${badN}` : ''}</span>}
+              </p>
+              <div className="mt-1 space-y-1">
+                {items.slice(0, 3).map((it, k) => (
+                  <p key={k} className="flex items-center gap-1 text-[10px] leading-tight" title={`${it.targetName} — ${it.campaignName}${it.postUrl ? '' : ` — ${it.status}`}`}>
+                    <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${it.status === 'POSTED' ? 'bg-emerald-500' : it.status === 'FAILED' ? 'bg-red-500' : 'bg-amber-500'}`} aria-hidden />
+                    <span className="truncate">{it.targetName}</span>
+                  </p>
+                ))}
+                {items.length > 3 && <p className="text-[10px] text-muted-foreground">+{items.length - 3} más</p>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {campaigns.length === 0 && <p className="text-muted-foreground">Sin campañas aún: cuando publiques, cada entrega aparecerá en el día real en que ocurrió.</p>}
+    </div>
+  );
+}
+
+// ─── Mejores horas (P10) ───────────────────────────────────────────
+
+function BestTimeCard({ campaigns }: { campaigns: FbCampaignRow[] }) {
+  const jobs = useMemo(
+    () => campaigns.flatMap((c) => c.jobs.map((j) => ({ status: j.status, postedAt: j.postedAt, updatedAt: j.updatedAt }))),
+    [campaigns],
+  );
+  const bt = useMemo(() => buildBestTime(jobs), [jobs]);
+
+  if (bt.sample === 0) {
+    return (
+      <div className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
+        Sin entregas registradas todavía. Este mapa no usa datos de nadie más: se dibuja con los éxitos y fallos que
+        tu propio worker reporta. Publica tu primera campaña y vuelve — con 10+ entregas empieza a sugerir franjas.
+      </div>
+    );
+  }
+
+  const cellStyle = (rate: number | null, total: number): CSSProperties => {
+    if (total === 0 || rate === null) return {};
+    return rate >= 0.5
+      ? { backgroundColor: `rgba(16,185,129,${(0.18 + rate * 0.62).toFixed(2)})` }
+      : { backgroundColor: `rgba(239,68,68,${(0.18 + (1 - rate) * 0.45).toFixed(2)})` };
+  };
+  const rowFor = (hour: number) => bt.days.map((d) => bt.cells.find((c) => c.day === d && c.hour === hour) as HeatCell);
+  const maxPosted = Math.max(1, ...bt.cells.map((c) => c.posted));
+
+  return (
+    <div className="space-y-2 text-xs">
+      <div className="overflow-x-auto">
+        <table className="border-separate border-spacing-0.5 text-[10px]">
+          <thead>
+            <tr>
+              <th className="pr-1 text-left font-normal text-muted-foreground">hora</th>
+              {bt.days.map((d) => <th key={d} className="w-9 font-medium text-muted-foreground">{DAY_LABELS_ES[d]}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {bt.hours.map((h) => (
+              <tr key={h}>
+                <td className="pr-1 tabular-nums text-muted-foreground">{String(h).padStart(2, '0')}</td>
+                {rowFor(h).map((c) => (
+                  <td
+                    key={`${c.day}-${c.hour}`}
+                    className="h-5 rounded text-center tabular-nums"
+                    style={cellStyle(c.rate, c.total)}
+                    title={c.total > 0 ? `${DAY_LABELS_ES[c.day]} ${c.hour}:00 — ${c.posted}/${c.total} publicados` : `${DAY_LABELS_ES[c.day]} ${c.hour}:00 — sin entregas`}
+                  >
+                    {c.posted > 0 && c.posted >= maxPosted / 2 ? c.posted : ''}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-[11px] font-medium text-muted-foreground">Sugerencias:</span>
+        {bt.suggestions.length === 0 && <span className="text-[11px] text-muted-foreground">aún sin franjas con muestra suficiente (≥3 por celda)</span>}
+        {bt.suggestions.map((s) => (
+          <span key={`${s.day}-${s.hour}`} className={CHIP_OK} title={`${Math.round(s.rate * 100)}% de entrega en esta franja`}>
+            {DAY_LABELS_ES[s.day]} {s.hour}:00 · {Math.round(s.rate * 100)}% ({s.posted})
+          </span>
+        ))}
+      </div>
+      {!bt.enoughData && (
+        <p className="text-[11px] text-amber-700 dark:text-amber-300">
+          Muestra pequeña: {bt.sample} entrega(s) ({bt.totalPosted} publicadas · {bt.totalFailed} fallidas). Las sugerencias se vuelven fiables con ≥10.
+        </p>
+      )}
+      <p className="text-[11px] text-muted-foreground">
+        Horas locales del navegador. Los fallos se ubican en la hora de su último reporte (aproximación declarada);
+        la noche (22-07) no aparece porque el escudo anti-ban la bloquea.
+      </p>
+    </div>
+  );
+}
+
+// ─── Biblioteca de media (P12) ─────────────────────────────────────
+
+function MediaLibrary({ media, busy, brandId, onChanged, setNotice }: {
+  media: FbMediaRow[];
+  busy: boolean;
+  brandId: string | null;
+  onChanged: () => Promise<void>;
+  setNotice: (n: { msg: string; ok: boolean } | null) => void;
+}) {
+  const [url, setUrl] = useState('');
+  const [label, setLabel] = useState('');
+
+  const add = async () => {
+    const res = await fetch('/api/fb-media', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: url.trim(), label: label.trim(), brandId }) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { setNotice({ msg: data.error ?? 'No se pudo guardar el media', ok: false }); return; }
+    setNotice({ msg: 'Media guardado en la biblioteca: aparece como chip en el formulario de campañas', ok: true });
+    setUrl(''); setLabel('');
+    await onChanged();
+  };
+
+  return (
+    <div className="space-y-2 text-xs">
+      <div className="flex flex-wrap gap-2">
+        <Input className="h-8 w-64 text-xs" placeholder="URL http(s) o ruta local del worker" value={url} onChange={(e) => setUrl(e.target.value)} />
+        <Input className="h-8 w-44 text-xs" placeholder="Etiqueta (opcional)" value={label} onChange={(e) => setLabel(e.target.value)} />
+        <Button size="sm" className="h-8 text-xs" disabled={busy || !url.trim()} onClick={add}>Guardar en biblioteca</Button>
+      </div>
+      {media.length === 0 ? (
+        <p className="text-muted-foreground">Biblioteca vacía. Guarda las imágenes que reusas (portadas, promos) y adjúntalas a cada campaña con un clic desde el formulario.</p>
+      ) : (
+        <div className="flex flex-wrap gap-1.5">
+          {media.map((m) => (
+            <span key={m.id} className="inline-flex max-w-full items-center gap-1.5 rounded-lg border px-2 py-1">
+              <ImageIcon className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden />
+              <span className="max-w-[240px] truncate" title={m.url}>{m.label || m.url}</span>
+              <button
+                className="text-muted-foreground transition-colors hover:text-red-600"
+                aria-label="Eliminar de la biblioteca"
+                disabled={busy}
+                onClick={async () => {
+                  const res = await fetch(`/api/fb-media?id=${m.id}`, { method: 'DELETE' });
+                  if (!res.ok) { setNotice({ msg: 'No se pudo eliminar', ok: false }); return; }
+                  setNotice({ msg: 'Media eliminado de la biblioteca', ok: true });
+                  await onChanged();
+                }}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -453,3 +453,13 @@ model FbAlert {
   resolved    Boolean   @default(false)
   createdAt   DateTime  @default(now())
 }
+
+model FbMedia {
+  id        String   @id @default(cuid())
+  brandId   String? // null = biblioteca global del módulo
+  label     String   @default("") // etiqueta opcional (p.ej. "promo-octubre")
+  url       String   // URL http(s) accesible por el worker o ruta local de su máquina
+  createdAt DateTime @default(now())
+
+  @@index([brandId])
+}

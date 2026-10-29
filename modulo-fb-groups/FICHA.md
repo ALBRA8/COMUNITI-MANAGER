@@ -200,3 +200,22 @@ con su motivo exacto).
   (declarado en el panel enmascarado, aplicado en el Chrome del worker vía
   FB_PROXY). Rediseño visual del panel del módulo: franja de KPIs con consumo
   del día, medidores por worker, chips de color y transiciones. *(hecho)*
+- **P8-P12** Mejoras del destripe Metricool (docs/research/METRICOOL_DESTRIPE.md,
+  "cerrar el ciclo publicar→medir→informar" sin integrar el SaaS): **P8** calendario
+  editorial semanal en el panel (navegación de semanas, agenda viva de campañas con
+  jobs en cola y ventana, bitácora por día de los hechos reales con postedAt);
+  **P9** informe de campaña imprimible (/reports/[campaignId], página de servidor:
+  KPIs honestos, instantánea de riesgo, parámetros, entrega por objetivo con
+  postUrl/failReason, bitácora de auditoría append-only y pie que declara que no
+  promete engagement; Ctrl+P → PDF para el cliente de agencia); **P10** mejores
+  horas con datos propios (lib pura fb-besttime: heatmap hora×día 6-21 de éxitos y
+  fallos firmados, sugerencias solo con muestra global ≥10 y celda ≥3 con tasa
+  ≥50%, aviso honesto de muestra pequeña; los fallos se ubican con updatedAt,
+  aproximación declarada); **P11** puente agéntico de lectura v1
+  (GET /api/fb-agent/fb-groups: estado honesto del módulo para AGENTE-GENERAL sin
+  exponer secretos ni baseUrl; crear campañas sigue pasando por POST + gauge + HITL);
+  **P12** biblioteca de media por marca (modelo FbMedia, API /api/fb-media con la
+  misma validación que los adjuntos, chips clicables en el formulario de campañas).
+  Tests: scripts/test-besttime.ts (bun, 10/10), scripts/test-p8-p12.cjs (24/24),
+  regresiones P7 25/25, P1 11/11, P6 24/24, verificación en navegador con capturas.
+  *(hecho)*
