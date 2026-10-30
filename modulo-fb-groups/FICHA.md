@@ -241,3 +241,13 @@ con su motivo exacto).
   expone el estado de política en solo lectura y ningún agente puede
   desactivar las restricciones. El apagado de emergencia detiene todo y solo
   un humano lo levanta con nota auditada. *(hecho)*
+
+- **Certificación post-familia-E (prueba general 30/10/2026)**: regresión
+  completa 182/182 sobre el motor multi-red — P2 26, E2E 21, P7 25, P1 11,
+  P6 24, P8-P12 24, besttime 10, meta-policy 41 — más build de producción sin
+  errores y cola limpia (0 residuos). Sanidad de tests encontrada y corregida
+  (solo tests, sin tocar producción): la ventana de P2 era 0-23 y el intervalo
+  [start,end) excluye windowEnd (aleteó a la hora local 23 → 0-24 como el resto
+  de la casa), y las baterías ahora cancelan residuos QUEUED de tests previos
+  antes de reclamar (el claim reparte por createdAt asc y no distingue baterías;
+  P2 además limpia sus propias campañas al terminar).

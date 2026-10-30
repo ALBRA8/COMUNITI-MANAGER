@@ -43,6 +43,15 @@ const sign = (raw, secret) => require('node:crypto').createHmac('sha256', secret
   const group = (groupsRes.data.groups ?? []).find((g) => g.fbId === `grupo-media-${stamp}`);
   check('grupo importado', Boolean(group));
 
+  // 2b) Higiene pre-claim: cancelar residuos en cola de otras baterías de tests (el claim reparte por createdAt asc y no distingue baterías; se ejecuta ANTES de crear las campañas propias)
+  const todas = await j('GET', '/api/fb-campaigns');
+  const PREFIJOS_TEST = ['Gate P2 ', 'Directa P2 ', 'Borrador a cancelar P2 ', 'Lanzamiento demo', 'Mejoras-', 'RiesgoAlto-', 'RiesgoBajo-', 'Rotacion-', 'Bold-', 'BadProxy-', 'MediaOK-', 'MediaX-', 'MediaI-'];
+  for (const c of todas.data.campaigns ?? []) {
+    if (PREFIJOS_TEST.some((p) => String(c.name ?? '').startsWith(p)) && ['DRAFT', 'QUEUED', 'PAUSED'].includes(c.status)) {
+      await j('PATCH', '/api/fb-campaigns', { campaignId: c.id, action: 'cancel' });
+    }
+  }
+
   // 3a) Campaña con adjuntos válidos (URL + ruta local)
   const mediaOk = ['https://example.com/foto-promo.jpg', '/tmp/local-imagen.png'];
   const ok = await j('POST', '/api/fb-campaigns', { name: `MediaOK-${stamp}`, text: 'Texto de prueba {con|sin} spintax', mode: 'group', engine: 'dom', mediaUrls: mediaOk, targets: [group.id], windowStart: 0, windowEnd: 24, approve: true });

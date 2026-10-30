@@ -40,6 +40,14 @@ async function text(path) {
   await prisma.setting.upsert({ where: { key: 'autonomy_mode' }, create: { key: 'autonomy_mode', value: 'L1_ASSISTED' }, update: { value: 'L1_ASSISTED' } });
   await prisma.$disconnect();
 
+  // 0) Higiene: cancelar residuos DRAFT/QUEUED/PAUSED de runs previos de este test (el claim reparte por createdAt asc y no distingue baterías)
+  const previos = await j('GET', '/api/fb-campaigns');
+  for (const c of previos.data.campaigns ?? []) {
+    if (/^(Gate P2 |Directa P2 |Borrador a cancelar P2 )/.test(String(c.name ?? '')) && ['DRAFT', 'QUEUED', 'PAUSED'].includes(c.status)) {
+      await j('PATCH', '/api/fb-campaigns', { campaignId: c.id, action: 'cancel' });
+    }
+  }
+
   // 1) Worker real (HMAC) para probar que el borrador es invisible al claim
   const reg = await j('POST', '/api/fb-workers', { action: 'register', name: `P2-${stamp}`, baseUrl: `http://localhost:887${stamp % 10}`, mode: 'pc', sessionAgeDays: 30 });
   check('worker registrado con secret', reg.status === 200 && reg.data.worker?.id && reg.data.secret, JSON.stringify(reg.data).slice(0, 120));
@@ -60,10 +68,10 @@ async function text(path) {
   const ga = (gList.data.groups ?? []).find((g) => g.fbId === `p2-grupo-a-${stamp}`);
   const gb = (gList.data.groups ?? []).find((g) => g.fbId === `p2-grupo-b-${stamp}`);
 
-  // 3) Creación por defecto → DRAFT + jobs PENDING_APPROVAL (ventana 0-23: siempre en ventana)
+  // 3) Creación por defecto → DRAFT + jobs PENDING_APPROVAL (ventana 0-24: siempre en ventana, indep. de la hora — [start,end) excluye windowEnd)
   const camp = await j('POST', '/api/fb-campaigns', {
     name: `Gate P2 ${stamp}`, text: 'Texto del borrador P2 {hola|chau}.', mode: 'group',
-    windowStart: 0, windowEnd: 23, targets: [ga.id, gb.id],
+    windowStart: 0, windowEnd: 24, targets: [ga.id, gb.id],
   });
   check('POST sin approve nace DRAFT', camp.status === 200 && camp.data.campaign?.status === 'DRAFT', JSON.stringify(camp.data.campaign));
   check('DRAFT nace sin approvedAt', camp.data.campaign?.approvedAt === null, JSON.stringify(camp.data.campaign));
@@ -121,7 +129,7 @@ async function text(path) {
   // 10) Flujo directo: approve:true nace QUEUED sin borrador intermedio
   const camp2 = await j('POST', '/api/fb-campaigns', {
     name: `Directa P2 ${stamp}`, text: 'Flujo directo aprobado al crear.', mode: 'profile',
-    windowStart: 0, windowEnd: 23, approve: true,
+    windowStart: 0, windowEnd: 24, approve: true,
   });
   check('approve:true nace QUEUED', camp2.status === 200 && camp2.data.campaign?.status === 'QUEUED', JSON.stringify(camp2.data.campaign));
   const approveCamp2 = await j('PATCH', '/api/fb-campaigns', { campaignId: camp2.data.campaign?.id, action: 'approve' });
@@ -130,7 +138,7 @@ async function text(path) {
   // 11) Cancelar un borrador cancela sus jobs PENDING_APPROVAL
   const camp3 = await j('POST', '/api/fb-campaigns', {
     name: `Borrador a cancelar P2 ${stamp}`, text: 'Este borrador se cancelará sin aprobar.', mode: 'profile',
-    windowStart: 0, windowEnd: 23,
+    windowStart: 0, windowEnd: 24,
   });
   const c3id = camp3.data.campaign?.id;
   const cancelDraft = await j('PATCH', '/api/fb-campaigns', { campaignId: c3id, action: 'cancel' });
@@ -144,6 +152,10 @@ async function text(path) {
   check('honestidad declara el gate DRAFT→approve', (agent.data.honesty ?? []).some((h) => h.includes('DRAFT') && h.includes('approve')));
   check('capabilities: createCampaign menciona approve', (agent.data.capabilities?.createCampaign ?? '').includes('approve'));
 
+  // limpieza: campañas propias fuera de la cola (higiene para baterías posteriores; 409 en ya consumidas se ignora)
+  for (const id of [campaignId, camp2.data.campaign?.id, c3id].filter(Boolean)) {
+    await j('PATCH', '/api/fb-campaigns', { campaignId: id, action: 'cancel' });
+  }
   // limpieza: worker de prueba fuera de la lista
   await j('POST', '/api/fb-workers', { action: 'delete', workerId });
   await prisma.$disconnect();
