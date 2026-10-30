@@ -1,4 +1,5 @@
-// META POLICY INTELLIGENCE — Centro de Inteligencia y Cumplimiento de Meta.
+// META POLICY INTELLIGENCE — Centro de Inteligencia y Cumplimiento de Meta
+// y de las redes del ecosistema (familia E: X, YouTube, TikTok, Telegram).
 // Núcleo server-side: registro de fuentes oficiales, consulta periódica con
 // evidencia, versionado inmutable, detección de cambios con clasificación
 // determinista y motor central de autorización (6 estados). Regla rectora:
@@ -61,6 +62,10 @@ const CRITICAL_SOURCE_KEYS = new Set([
   'community-standards',
   'wa-bplatform-terms',
   'ad-standards',
+  // Familia E: fuentes que regulan directamente la automatización de posteo
+  'x-automation-rules',
+  'yt-developer-policies',
+  'tiktok-tos',
 ]);
 
 /** Productos Meta que gobiernan la operación en grupos de Facebook.
@@ -81,6 +86,11 @@ const PRODUCT_MODULES: Record<string, string[]> = {
   COMMERCE: ['creation', 'harness'],
   COLOMBIA: ['harness'],
   INSTAGRAM: ['creation', 'harness'],
+  // Familia E: otras redes del ecosistema (BROWSER-FACTORY / conectores API)
+  X_TWITTER: ['creation', 'harness'],
+  YOUTUBE: ['creation', 'harness'],
+  TIKTOK: ['creation', 'harness'],
+  TELEGRAM: ['creation', 'harness'],
 };
 
 const SEVERITY_ORDER = ['BAJO', 'MEDIO', 'ALTO', 'CRITICO'] as const;
@@ -95,10 +105,15 @@ export function relevantProductsFor(operation: string): string[] {
   if (operation.startsWith('FB_GROUP') || operation.startsWith('FB_CAMPAIGN') || operation.startsWith('FB_JOIN')) return FB_GROUPS_RELEVANT;
   if (operation.startsWith('WHATSAPP')) return ['WHATSAPP'];
   if (operation.startsWith('AGENT_READ')) return FB_GROUPS_RELEVANT;
+  if (operation.startsWith('X_')) return ['X_TWITTER'];
+  if (operation.startsWith('YT_')) return ['YOUTUBE'];
+  if (operation.startsWith('TT_')) return ['TIKTOK'];
+  if (operation.startsWith('TELEGRAM_')) return ['TELEGRAM'];
+  if (operation.startsWith('IG_')) return ['INSTAGRAM'];
   return ['FACEBOOK', 'TRANSPARENCY'];
 }
 
-// ─── Catálogo de fuentes oficiales (26 fuentes del mandato) ────────
+// ─── Catálogo de fuentes oficiales (26 del mandato + 8 de familia E) ─
 
 export interface SourceSeed {
   key: string;
@@ -143,6 +158,18 @@ export const SOURCES_SEED: SourceSeed[] = [
   { key: 'co-sic', name: 'Superintendencia de Industria y Comercio', url: 'https://www.sic.gov.co/', product: 'COLOMBIA', family: 'D', priority: 'WEEKLY', method: 'HTTP_GET', checkIntervalHours: 168 },
   { key: 'co-dnda', name: 'Dirección Nacional de Derecho de Autor', url: 'https://www.derechodeautor.gov.co/', product: 'COLOMBIA', family: 'D', priority: 'WEEKLY', method: 'HTTP_GET', checkIntervalHours: 168 },
   { key: 'co-dian', name: 'DIAN (Dirección de Impuestos y Aduanas)', url: 'https://www.dian.gov.co/', product: 'COLOMBIA', family: 'D', priority: 'WEEKLY', method: 'HTTP_GET', checkIntervalHours: 168 },
+  // E. Otras redes del ecosistema: reglas oficiales de posteo y automatización
+  //    (investigación del 2026-10-30; ver docs/policy/REGLAS_POSTEO_REDES_BF.md).
+  //    La consulta del portal de TikTok puede fallar por contenido JS: se
+  //    registra el fallo honesto y NO se simula verificación.
+  { key: 'x-automation-rules', name: 'Reglas de automatización de X', url: 'https://help.x.com/en/rules-and-policies/x-automation', product: 'X_TWITTER', family: 'E', priority: 'DAILY', method: 'HTTP_GET', checkIntervalHours: 24 },
+  { key: 'x-terms', name: 'Condiciones de servicio de X', url: 'https://x.com/legal/tos', product: 'X_TWITTER', family: 'E', priority: 'WEEKLY', method: 'HTTP_GET', checkIntervalHours: 168 },
+  { key: 'yt-api-tos', name: 'Condiciones de servicio de las APIs de YouTube', url: 'https://developers.google.com/youtube/terms/api-services-terms-of-service', product: 'YOUTUBE', family: 'E', priority: 'DAILY', method: 'HTTP_GET', checkIntervalHours: 24 },
+  { key: 'yt-developer-policies', name: 'Políticas para desarrolladores de YouTube', url: 'https://developers.google.com/youtube/terms/developer-policies', product: 'YOUTUBE', family: 'E', priority: 'DAILY', method: 'HTTP_GET', checkIntervalHours: 24 },
+  { key: 'tiktok-tos', name: 'Condiciones de servicio de TikTok', url: 'https://www.tiktok.com/legal/page/global/terms-of-service', product: 'TIKTOK', family: 'E', priority: 'WEEKLY', method: 'HTTP_GET', checkIntervalHours: 168 },
+  { key: 'tiktok-dev-portal', name: 'Portal de desarrolladores de TikTok (Content Posting API)', url: 'https://developers.tiktok.com/doc/overview/', product: 'TIKTOK', family: 'E', priority: 'DAILY', method: 'HTTP_GET', checkIntervalHours: 24 },
+  { key: 'telegram-bots-faq', name: 'FAQ oficial de bots de Telegram (límites de mensajería)', url: 'https://core.telegram.org/bots/faq', product: 'TELEGRAM', family: 'E', priority: 'WEEKLY', method: 'HTTP_GET', checkIntervalHours: 168 },
+  { key: 'telegram-tos', name: 'Condiciones de servicio de Telegram', url: 'https://telegram.org/tos', product: 'TELEGRAM', family: 'E', priority: 'WEEKLY', method: 'HTTP_GET', checkIntervalHours: 168 },
 ];
 
 export async function ensurePolicySourcesSeeded(): Promise<{ seeded: number; total: number }> {
@@ -501,15 +528,53 @@ async function isStale(product: string): Promise<{ stale: boolean; detail: strin
   return { stale: false, detail: `${fresh.length}/${sources.length} fuente(s) de ${product} verificadas dentro de ${days} días`, evidence };
 }
 
-/** Motor central: toda operación relacionada con Meta pasa por aquí.
- * El peor veredicto gana; la ausencia de información nunca es permiso. */
+function defaultProductFor(operation: string): string {
+  if (operation.startsWith('WHATSAPP')) return 'WHATSAPP';
+  if (operation.startsWith('X_')) return 'X_TWITTER';
+  if (operation.startsWith('YT_')) return 'YOUTUBE';
+  if (operation.startsWith('TT_')) return 'TIKTOK';
+  if (operation.startsWith('TELEGRAM_')) return 'TELEGRAM';
+  if (operation.startsWith('IG_')) return 'INSTAGRAM';
+  return 'FACEBOOK_GROUPS';
+}
+
+/** Motor central: toda operación relacionada con Meta o con las redes del
+ * ecosistema pasa por aquí. El peor veredicto gana; la ausencia de
+ * información nunca es permiso. */
 export async function authorize(input: AuthorizeInput): Promise<AuthorizeResult> {
   const operation = input.operation;
-  const product = input.product ?? (operation.startsWith('WHATSAPP') ? 'WHATSAPP' : 'FACEBOOK_GROUPS');
+  const product = input.product ?? defaultProductFor(operation);
   const reasons: string[] = [];
   const conditions: string[] = [];
   let verdict: PolicyVerdict = 'PERMITIDO';
   let evidence: AuthorizeResult['evidence'] = [];
+
+  // 0) Regla fija §5.1 (inmodificable por agentes): la publicación mediante
+  //    automatización de navegador sin API oficial no está autorizada por
+  //    ninguna red (X: suspensión permanente; YouTube: solo métodos
+  //    documentados; Meta: prohibido circumvent el enforcement). Solo se
+  //    publica por API oficial de la red o por acción humana (modo asistido).
+  //    Solo un humano puede cambiar esta regla, y es en el código, no en datos.
+  if (operation.startsWith('BROWSER_AUTOMATION')) {
+    const result: AuthorizeResult = {
+      verdict: 'BLOQUEADO',
+      reasons: ['Regla fija de cumplimiento (§5.1): la publicación mediante automatización de navegador no-API no está autorizada por ninguna red social (X la castiga con suspensión permanente, YouTube exige métodos documentados, Meta prohíbe circunvenir su enforcement). Solo se publica por la API oficial de la red o por acción humana en modo asistido.'],
+      conditions: ['Operación detenida: no ejecutar y registrar la razón. Alternativas autorizadas: conector API oficial de la red o publicación humana en modo asistido.'],
+      evidence: [],
+      checkedAt: new Date().toISOString(),
+    };
+    await db.auditEntry.create({
+      data: {
+        actor: input.actor ?? 'system:policy-engine',
+        action: 'META_POLICY_CHECK',
+        targetType: 'META_POLICY',
+        targetId: operation,
+        allowed: false,
+        reason: `${result.verdict}${input.note ? ` (${input.note})` : ''}: ${result.reasons.join(' | ')}`.slice(0, 1000),
+      },
+    });
+    return result;
+  }
 
   // 1) Apagado de emergencia del motor (solo reactivable por un humano).
   if ((await getSetting(POLICY_SETTINGS.enabled)) === 'false') {
@@ -565,11 +630,19 @@ export async function authorize(input: AuthorizeInput): Promise<AuthorizeResult>
     }
   }
 
-  // 6) HITL: la publicación automatizada en grupos exige aprobación humana explícita.
-  const needsHuman = operation === 'FB_GROUP_POST' || operation === 'FB_CAMPAIGN_APPROVAL' || operation === 'FB_JOIN_GROUP';
+  // 6) HITL: toda operación de escritura (grupos FB y demás redes) exige
+  //    aprobación humana pre-vuelo explícita.
+  const WRITE_OPERATIONS = new Set([
+    'FB_GROUP_POST', 'FB_CAMPAIGN_APPROVAL', 'FB_JOIN_GROUP',
+    'X_POST', 'TT_POST', 'YT_UPLOAD', 'TELEGRAM_POST', 'IG_POST',
+  ]);
+  const needsHuman = WRITE_OPERATIONS.has(operation);
   if (needsHuman && !input.approvedByHuman) {
     verdict = worstOf(verdict, 'REQUIERE_APROBACION');
-    reasons.push('Operación de publicación/unión automatizada: exige aprobación humana pre-vuelo explícita (gate HITL). No existe método de publicación en grupos autorizado por Meta para automatización; por ello la regla interna es consentimiento humano + límites conservadores.');
+    const base = operation.startsWith('FB_')
+      ? 'No existe método de publicación en grupos autorizado por Meta para automatización; por ello la regla interna es consentimiento humano + límites conservadores.'
+      : 'Cada red solo autoriza la publicación por su API oficial y con las condiciones de su política (auditorías, cuotas, no duplicación entre cuentas); sin conector autorizado verificado, la regla interna es consentimiento humano + modo asistido.';
+    reasons.push(`Operación de publicación/unión automatizada (${operation}): exige aprobación humana pre-vuelo explícita (gate HITL). ${base}`);
   }
 
   // 7) Veredicto final + condiciones estándar (nunca PERMITIDO puro para escritura Meta).
