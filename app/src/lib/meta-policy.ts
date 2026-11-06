@@ -48,6 +48,7 @@ export interface AuthorizeResult {
   reasons: string[];
   conditions: string[];
   evidence: { sourceKey: string; url: string; lastOkAt: string | null; status: string }[];
+  cap?: NetworkCapSnapshot; // techo propio aplicable (P13) si la operación es de publicación
   checkedAt: string;
 }
 
@@ -509,6 +510,174 @@ const STANDARD_CONDITIONS = [
   'Registro auditado de cada acción y de sus razones',
 ];
 
+// ─── Techos propios multi-red (P13, destripe Blotato §3/§4) ─────────
+// Tabla AUDITABLE de caps defensivos por red, consultada por el motor para
+// toda operación de publicación. Tres capas separadas explícitamente (honestidad
+// radical, coherente con REGLAS_POSTEO_REDES_BF.md §5):
+//   1) platformLimit: lo que dice la fuente OFICIAL de la red — solo se llena
+//      con cifra verificada en fuente directa (fecha de verificación citada);
+//      si no hay captura documental directa, queda null + NO_VERIFICADO.
+//   2) ourCap: el techo interno de trabajo, SIEMPRE ≤ al oficial cuando este
+//      existe. Es decisión de ingeniería defensiva propia (patrón del destripe:
+//      "publicar al máximo por automatización marca la cuenta") y vive en el
+//      código: NO es modificable por agentes, igual que la regla fija §5.1.
+//   3) calibration: el valor del competidor comercial (Blotato) como REFERENCIA
+//      de calibración — nunca fuente de verdad de políticas (decisión §6.4 del
+//      destripe).
+// Consumo: el conteo por red+canal se registra en la base (patrón FbDailyUsage)
+// cuando el conector API de la red exista (Fase II de REGLAS_POSTEO_REDES_BF.md);
+// mientras tanto la tabla manda como condición y como criterio de diseño.
+
+export interface NetworkCapEntry {
+  operation: string; // operación de escritura que la consulta (WRITE_OPERATIONS)
+  network: string;   // red visible en panel
+  product: string;   // producto del motor (defaultProductFor)
+  scope: string;     // a quién aplica el techo
+  platformLimit: string | null;       // cifra oficial verificada o null
+  platformSource: string | null;      // URL de la fuente oficial
+  platformVerifiedAt: string | null;  // fecha de verificación documental directa
+  platformStatus: 'VERIFICADO' | 'NO_VERIFICADO';
+  ourCap: string;            // techo propio de trabajo (defensivo)
+  capSource: 'OFICIAL' | 'DEFENSIVO_PROPIO';
+  calibration: string;       // referencia de terceros, marcada como NO fuente de verdad
+  rationale: string;         // razón escrita del techo (patrón #2 del destripe)
+  liveCheck: string | null;  // endpoint oficial que manda por cuenta, si existe
+}
+
+export interface NetworkCapSnapshot {
+  operation: string;
+  network: string;
+  scope: string;
+  ourCap: string;
+  platformStatus: 'VERIFICADO' | 'NO_VERIFICADO';
+  liveCheck: string | null;
+}
+
+export const NETWORK_CAPS: NetworkCapEntry[] = [
+  {
+    operation: 'FB_GROUP_POST',
+    network: 'Facebook (grupos)',
+    product: 'FACEBOOK_GROUPS',
+    scope: 'por worker (cuenta) / día',
+    platformLimit: null,
+    platformSource: null,
+    platformVerifiedAt: null,
+    platformStatus: 'NO_VERIFICADO',
+    ourCap: '5/10/20 posts según warmup (días 0-6 / 7-29 / 30+); noche 22:00-07:00 cortada; gap 3-10 min entre posts',
+    capSource: 'DEFENSIVO_PROPIO',
+    calibration: 'Blotato: 25/Página/24h (solo Páginas; grupos fuera de su alcance)',
+    rationale: 'Sin API de grupos (deprecada con Graph v19, 22/04/2024): el posteo va por sesión propia del usuario con navegador real, así que el techo es de convivencia, no de cuota API. Ya implementado en FbDailyUsage/computeCap.',
+    liveCheck: null,
+  },
+  {
+    operation: 'FB_PAGE_POST',
+    network: 'Facebook (Páginas)',
+    product: 'FACEBOOK_GROUPS', // mismo producto Meta; operación distinta
+    scope: 'por Página / 24h rodante',
+    platformLimit: null,
+    platformSource: null,
+    platformVerifiedAt: null,
+    platformStatus: 'NO_VERIFICADO',
+    ourCap: '25/Página/24h hasta confirmar la cifra oficial contra la Graph API en operación',
+    capSource: 'DEFENSIVO_PROPIO',
+    calibration: 'Blotato: 25/Página/24h (su techo propio, más estricto que la plataforma según su doc)',
+    rationale: 'La doc oficial de Pages API (actualizada 2026-05-07) soporta publicación y programación pero la cifra exacta de techo no quedó capturada en fuente directa (REGLAS_POSTEO_REDES_BF.md §5): no se hardcodea como oficial. El techo propio arranca conservador y se recalibra con la respuesta real de la API.',
+    liveCheck: 'Respuesta real de la Graph API (códigos de error de rate limit por Página) al operar',
+  },
+  {
+    operation: 'IG_POST',
+    network: 'Instagram',
+    product: 'INSTAGRAM',
+    scope: 'por cuenta profesional / 24h rodante',
+    platformLimit: '100 posts API / 24h rodante (carousel cuenta como 1); el mismo doc oficial menciona 50 para carousels: contradicción interna de Meta registrada',
+    platformSource: 'https://developers.facebook.com/documentation/instagram-platform/content-publishing',
+    platformVerifiedAt: '2026-10-30',
+    platformStatus: 'VERIFICADO',
+    ourCap: '50/cuenta/24h o el valor que informe el endpoint oficial por cuenta, el que resulte menor',
+    capSource: 'DEFENSIVO_PROPIO',
+    calibration: 'Blotato: 50/cuenta/24h (mitad del máximo oficial declarado)',
+    rationale: 'Contradicción de Meta (100 vs 50) y patrón anti-flag del destripe: operar al máximo de la plataforma por automatización eleva la señal de riesgo. El endpoint oficial de límite manda por cuenta si reporta menos.',
+    liveCheck: 'GET /<IG_ID>/content_publishing_limit (fuente de verdad por cuenta, recomendado por la propia doc oficial)',
+  },
+  {
+    operation: 'X_POST',
+    network: 'X (Twitter)',
+    product: 'X_TWITTER',
+    scope: 'por app registrada (tier) y por cuenta',
+    platformLimit: null,
+    platformSource: 'https://help.x.com/en/rules-and-policies/x-automation',
+    platformVerifiedAt: '2026-10-30',
+    platformStatus: 'NO_VERIFICADO', // las reglas son cualitativas (no-duplicación, no evasión); la cifra por tier no quedó capturada
+    ourCap: '50% del límite del tier de la app registrada; prohibido duplicar contenido en una o entre cuentas propias (regla cualitativa oficial sí verificada)',
+    capSource: 'DEFENSIVO_PROPIO',
+    calibration: 'Blotato: sin techo propio para X (rige el de la plataforma)',
+    rationale: 'Las reglas de automatización de X (abr 2026) son cualitativas: auto-posteo de difusión útil permitido vía API, duplicación y evasión de rate limits prohibidas. La cifra por tier depende del nivel contratado: se fija contra el tier real cuando la app exista.',
+    liveCheck: 'Cabeceras x-rate-limit de la respuesta de POST /2/tweets (tier real de la app)',
+  },
+  {
+    operation: 'YT_UPLOAD',
+    network: 'YouTube',
+    product: 'YOUTUBE',
+    scope: 'por canal / día (cuota del proyecto)',
+    platformLimit: null,
+    platformSource: 'https://developers.google.com/youtube/terms/developer-policies',
+    platformVerifiedAt: '2026-10-30',
+    platformStatus: 'NO_VERIFICADO', // cuota por defecto (10.000 u/día; upload ≈1.600 u) reportada por terceros, sin captura directa
+    ourCap: '6 subidas/canal/día (equivale a la cuota por defecto reportada si se confirma) y solo tras verificar la cuota real en la consola del proyecto',
+    capSource: 'DEFENSIVO_PROPIO',
+    calibration: 'Blotato: 10/canal/24h en Starter, 25 en Creator',
+    rationale: 'La cuota de YouTube Data API por defecto (10.000 unidades/día; videos.insert ≈1.600) quedó en REGLAS_POSTEO_REDES_BF.md §8 como NO_VERIFICADO en fuente directa: el techo propio no se activa en producción hasta confirmarla en consola.',
+    liveCheck: 'Consola de desarrolladores de Google (cuota real del proyecto) + respuesta de videos.insert',
+  },
+  {
+    operation: 'TT_POST',
+    network: 'TikTok',
+    product: 'TIKTOK',
+    scope: 'por cuenta / día',
+    platformLimit: null,
+    platformSource: null,
+    platformVerifiedAt: null,
+    platformStatus: 'NO_VERIFICADO',
+    ourCap: 'Sin direct post hasta que la app pase la auditoría de TikTok; modo asistido. Con app auditada: inicio 5/cuenta/día y escalar con observación',
+    capSource: 'DEFENSIVO_PROPIO',
+    calibration: 'Blotato: 25/cuenta/24h (máx. 3 cuentas TikTok en su plan Starter)',
+    rationale: 'La Content Posting API exige auditoría de la app para direct post (REGLAS_POSTEO_REDES_BF.md §3/§8, corroborado por comunidad; doc JS-heavy sin captura directa): sin app auditada el agente no publica, no hay techo que calibrar.',
+    liveCheck: null,
+  },
+  {
+    operation: 'TELEGRAM_POST',
+    network: 'Telegram',
+    product: 'TELEGRAM',
+    scope: 'por bot: por chat, por grupo y en difusión',
+    platformLimit: '~30 msg/seg en difusión (1.000/s con paid broadcasts); 1 msg/seg por chat; 20 msg/min por grupo (429 con ráfagas)',
+    platformSource: 'https://core.telegram.org/bots/faq',
+    platformVerifiedAt: '2026-10-30',
+    platformStatus: 'VERIFICADO',
+    ourCap: '20 msg/seg en difusión (⅔ del oficial); 1 msg/seg por chat y 20 msg/min por grupo respetados tal cual; 429 → backoff y parada honesta',
+    capSource: 'DEFENSIVO_PROPIO',
+    calibration: 'Blotato: sin soporte de Telegram (9 redes, Telegram fuera)',
+    rationale: 'Telegram es la excepción estructural (Bot API diseñada a propósito para software): los límites oficiales están publicados y verificados. El margen propio en difusión absorbe ráfagas sin rozar el 429.',
+    liveCheck: 'Respuesta 429 con parámetros retry_after del Bot API (señal directa de la red)',
+  },
+];
+
+function capForOperation(operation: string): NetworkCapEntry | null {
+  return NETWORK_CAPS.find((c) => c.operation === operation) ?? null;
+}
+
+/** Tabla auditable para panel/API (orden estable por red). */
+export function networkCapsTable(): NetworkCapEntry[] {
+  return NETWORK_CAPS.map((c) => ({ ...c }));
+}
+
+/** Condición de techo que el motor exige a la operación (P13). */
+function capConditionFor(entry: NetworkCapEntry): string {
+  const oficial = entry.platformStatus === 'VERIFICADO'
+    ? `Límite oficial verificado (${entry.platformVerifiedAt}): ${entry.platformLimit}`
+    : 'Sin cifra oficial capturada en fuente directa hoy: NO se opera al límite y la cifra oficial se confirma por endpoint/consola antes de producción';
+  return `Techo propio ${entry.network} (${entry.capSource}): ${entry.ourCap}. ${oficial}. Referencia de calibración de terceros (NO fuente de verdad): ${entry.calibration}. Razón: ${entry.rationale}${entry.liveCheck ? ` Verificación viva: ${entry.liveCheck}.` : ''}`;
+}
+
 function worstOf(a: PolicyVerdict, b: PolicyVerdict): PolicyVerdict {
   return VERDICT_RANK[a] >= VERDICT_RANK[b] ? a : b;
 }
@@ -654,7 +823,24 @@ export async function authorize(input: AuthorizeInput): Promise<AuthorizeResult>
     conditions.push('Operación detenida: no ejecutar; escalar a revisión humana y registrar la razón.');
   }
 
-  const result: AuthorizeResult = { verdict, reasons, conditions, evidence, checkedAt: new Date().toISOString() };
+  // 8) Techo propio multi-red (P13): toda operación de publicación lleva su
+  //    techo como condición explícita y como dato estructurado en el resultado,
+  //    para que conectores (Fase II) y panel lo consuman sin re-derivarlo.
+  const cap = WRITE_OPERATIONS.has(operation) ? capForOperation(operation) : null;
+  if (cap && (verdict === 'PERMITIDO_CON_CONDICIONES' || verdict === 'REQUIERE_APROBACION')) {
+    conditions.push(capConditionFor(cap));
+  }
+
+  const result: AuthorizeResult = {
+    verdict,
+    reasons,
+    conditions,
+    evidence,
+    ...(cap
+      ? { cap: { operation: cap.operation, network: cap.network, scope: cap.scope, ourCap: cap.ourCap, platformStatus: cap.platformStatus, liveCheck: cap.liveCheck } }
+      : {}),
+    checkedAt: new Date().toISOString(),
+  };
 
   if (!input.silent) {
     await db.auditEntry.create({

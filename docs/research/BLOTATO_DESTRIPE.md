@@ -195,6 +195,16 @@ el único que amplía el motor con algo que la familia E dejó sembrado pero sin
 números; P14 y P15 reutilizan lo que ya existe y solo esperan autorización del
 operador; P11 v2 madura cuando el chaleco lo demande.
 
+**Estado de ejecución (2026-11-06, misma fecha del destripe):**
+
+| # | Estado | Dónde quedó |
+|---|---|---|
+| P13 | **CONSTRUIDO** | `NETWORK_CAPS` en `app/src/lib/meta-policy.ts` (7 redes, 3 capas separadas: oficial verificado / techo propio fijo en código / calibración de terceros), condición estructurada `cap` en todo veredicto de publicación, campo `networkCaps` en la API, pestaña "Techos multi-red" en el panel y simulador ampliado. Tests: 11 checks nuevos (meta-policy 53/53) |
+| P14 | **CONSTRUIDO** | `POC_POSTGALE_VALIDATION.md` § "Endurecimiento del POC" (polling con intervalos, 429 como telemetría, campos opcionales, techos propios previos al envío) |
+| P11 v2-lite | **CONSTRUIDO** | ruta `/llms.txt` del chaleco (superficie agéntica + reglas permanentes) |
+| P15 | **PENDIENTE del operador** | requiere autorizar gasto ($29/mes mínimo en Blotato; trial excluye API) |
+| Slots recurrentes / fábrica de contenido | DESCARTADOS | sin cambios |
+
 Fuentes: blotato.com · blotato.com/pricing · blotato.com/social-media-api ·
 blotato.com/mcp · blotato.com/reviews · help.blotato.com (llms.txt,
 api-and-mcp-concepts/rate-limits, start-with-an-ai-agent/llm/limits,

@@ -89,3 +89,39 @@ Verificación: leer `GET /api/v1/posts/{id}` con el identificador del proveedor 
 ## Regla de salida
 
 La integración no se considera lista hasta que todos los criterios críticos pasen. La configuración de variables de entorno por sí sola no cuenta como prueba de conexión. No usar cuentas ajenas ni automatizar publicaciones en grupos de Facebook mediante rutas no oficiales.
+
+## Endurecimiento del POC con el destripe Blotato (P14, 2026-11-06)
+
+El destripe de Blotato (`BLOTATO_DESTRIPE.md`) confirma desde el lado comercial los
+criterios de este POC y añade cuatro exigencias que se incorporan como criterios
+obligatorios antes de cualquier envío real:
+
+1. **El 2xx de creación no es publicación (ya estaba; se refuerza con polling
+   con intervalos, no con llamadas repetidas).** Tras crear el objeto remoto,
+   `verify_publication` consulta `GET /api/v1/posts/{id}` con espera creciente
+   (p. ej. 5 s → 15 s → 60 s, tope 10 intentos) y registra el estado final por
+   objetivo. Un `pending_approval` del proveedor se registra como
+   `PENDING_APPROVAL` y exige resolución humana; nunca se reintenta por su cuenta.
+2. **Los 429 son telemetría, no ruido.** Cada 429 con `Retry-After` se registra
+   en auditoría con el valor recibido (es la única señal directa de cuota real
+   del proveedor y de la red) y el conector aplica la espera indicada. Dos 429
+   en la misma publicación detienen el intento y escalan a humano: reintentar
+   en bucle es exactamente la conducta que las reglas de las redes castigan.
+3. **Capacidad honesta por red: campos opcionales, no ceros.** La respuesta del
+   conector separa lo que cada red devuelve de lo que no existe: si una red no
+   da métricas o ID de plataforma, el campo queda ausente (o `null` con motivo),
+   nunca `0` ni `''` inventados. El panel distingue "sin dato" de "dato cero".
+4. **Techos propios antes de enviar (P13).** Toda operación de publicación del
+   conector cruza primero la tabla `NETWORK_CAPS` del motor
+   (`src/lib/meta-policy.ts`): el techo propio por red (≤ al oficial cuando este
+   está verificado; defensa propia cuando no) es condición del veredicto y el
+   consumo por red+canal se registra antes de enviar. Si el endpoint/consola
+   oficial de la red reporta un límite menor que el techo propio, manda el
+   oficial y el techo se recalibra hacia abajo.
+
+Nota de horneada de proveedores (P15): Blotato queda como **candidata
+secundaria** del mismo tipo (SaaS cerrado API-first con MCP) para probar contra
+el MISMO harness de este POC cuando el administrador autorice el gasto
+(Blotato: trial que excluye API/MCP, gasto mínimo $29/mes; ver
+`BLOTATO_DESTRIPE.md` §2). Postgale mantiene la prioridad por su contrato
+documentado y la idempotencia por clave derivada que este POC exige.

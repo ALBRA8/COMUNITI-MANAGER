@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import {
   ensurePolicySourcesSeeded, runDueChecks, checkSource, registerManualReview,
-  authorize, policyState, buildReport, POLICY_SETTINGS,
+  authorize, policyState, buildReport, POLICY_SETTINGS, networkCapsTable,
 } from '@/lib/meta-policy';
 
 export const dynamic = 'force-dynamic';
@@ -46,6 +46,7 @@ export async function GET(req: NextRequest) {
     incidents,
     recentChecks,
     decisions,
+    networkCaps: networkCapsTable(), // techos propios multi-red (P13): tabla auditable
   });
 }
 

@@ -251,3 +251,31 @@ con su motivo exacto).
   de la casa), y las baterías ahora cancelan residuos QUEUED de tests previos
   antes de reclamar (el claim reparte por createdAt asc y no distingue baterías;
   P2 además limpia sus propias campañas al terminar).
+
+- **Techos propios multi-red + endurecimiento de integración (destripe Blotato
+  06/11/2026)**: del destripe de Blotato (docs/research/BLOTATO_DESTRIPE.md) se
+  construyó lo que aporta valor sin dependencia externa ni gasto:
+  **P13** — tabla `NETWORK_CAPS` en el motor (src/lib/meta-policy.ts): techos
+  defensivos por red para toda publicación (FB grupos 5/10/20 warmup, FB
+  Páginas 25/24h, IG 50/24h bajo el 100 oficial verificado con
+  content_publishing_limit como fuente viva, X 50% del tier, YT 6 subidas
+  pendiente confirmar cuota, TikTok sin direct post hasta auditoría, Telegram
+  ⅔ del límite oficial verificado), cada entrada separa límite oficial
+  (solo con captura documental directa), techo propio (fijo en código, NO
+  modificable por agentes) y calibración de terceros (Blotato = referencia,
+  nunca fuente de verdad); el motor la entrega como condición estructurada
+  (`cap`) en todo veredicto de publicación y la API la expone como
+  `networkCaps`; pestaña nueva "Techos multi-red" en el Centro de Cumplimiento
+  y simulador ampliado a las 7 operaciones multi-red (capturas
+  meta-policy-techos.png y meta-policy-simulador-techo.png). **P14** —
+  POC Postgale endurecido: polling con intervalos (5s→15s→60s, tope 10),
+  429 como telemetría con Retry-After (2 en la misma publicación = parada y
+  escalado), campos opcionales por red (sin ceros inventados) y techos propios
+  como criterio previo a todo envío real. **P11 v2-lite** — llms.txt propio
+  (/llms.txt) con la superficie agéntica del chaleco y sus reglas permanentes.
+  Regresión completa 194/194 (P2 26, E2E 21, P7 25, P1 11, P6 24, P8-P12 24,
+  besttime 10, meta-policy 53) + build de producción + lint 0 errores. La
+  vigilancia real dejó un hallazgo pendiente de análisis HUMANO en el panel:
+  cambio CRÍTICO en yt-developer-policies (chrome rotativo de Google, falso
+  positivo probable) que bloquea operaciones hasta que el operador lo analice.
+  *(hecho)*

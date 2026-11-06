@@ -19,7 +19,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { SectionHeader } from '@/components/sections/dashboard';
 import {
   ShieldCheck, ShieldAlert, ShieldX, RefreshCw, FileCheck2, Printer,
-  PlayCircle, Ban, History, ScanSearch, CircleAlert, ClipboardCheck,
+  PlayCircle, Ban, History, ScanSearch, CircleAlert, ClipboardCheck, Gauge,
 } from 'lucide-react';
 
 // ─── Tipos (espejo de la API) ──────────────────────────────────────
@@ -75,6 +75,16 @@ interface PolicyStateResponse {
   incidents: PolicyIncident[];
   recentChecks: CheckRun[];
   decisions: AuditRow[];
+  networkCaps: NetworkCapRow[];
+}
+
+// Techo propio multi-red (P13, destripe Blotato): espejo de NETWORK_CAPS
+interface NetworkCapRow {
+  operation: string; network: string; product: string; scope: string;
+  platformLimit: string | null; platformSource: string | null; platformVerifiedAt: string | null;
+  platformStatus: 'VERIFICADO' | 'NO_VERIFICADO';
+  ourCap: string; capSource: 'OFICIAL' | 'DEFENSIVO_PROPIO';
+  calibration: string; rationale: string; liveCheck: string | null;
 }
 
 interface PolicyReportData {
@@ -280,6 +290,7 @@ export function MetaComplianceSection() {
       <Tabs defaultValue="sources">
         <TabsList className="mb-3">
           <TabsTrigger value="sources">Fuentes ({sourcesFiltered.length})</TabsTrigger>
+          <TabsTrigger value="caps">Techos multi-red ({data.networkCaps?.length ?? 0})</TabsTrigger>
           <TabsTrigger value="changes">Cambios ({changesFiltered.filter((c) => c.status === 'OPEN').length} abiertos)</TabsTrigger>
           <TabsTrigger value="reports">Informes</TabsTrigger>
           <TabsTrigger value="decisions">Decisiones e incidentes</TabsTrigger>
@@ -318,6 +329,54 @@ export function MetaComplianceSection() {
                     </div>
                   ))}
                   {sourcesFiltered.length === 0 && <p className="text-sm text-muted-foreground">Sin fuentes para este filtro.</p>}
+                </div>
+              </ScrollArea>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ── Techos multi-red (P13) ── */}
+        <TabsContent value="caps">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2"><Gauge className="h-4 w-4" /> Techos propios multi-red (tabla auditable)</CardTitle>
+              <CardDescription>
+                Techos internos de trabajo por red, SIEMPRE por debajo del máximo de cada plataforma cuando este existe. Tres capas separadas: límite oficial (solo con captura documental directa), techo propio (decisión de ingeniería defensiva, fija en código — no modificable por agentes) y calibración de terceros (referencia comercial, nunca fuente de verdad).
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ScrollArea className="max-h-[30rem]">
+                <div className="space-y-3 pr-3">
+                  {(data.networkCaps ?? []).map((c) => (
+                    <div key={c.operation} className="rounded-lg border border-border p-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-sm font-semibold">{c.network}</span>
+                        <Badge variant="outline" className="text-[10px]">{c.operation}</Badge>
+                        <Badge className={c.platformStatus === 'VERIFICADO' ? 'bg-emerald-600 text-white' : 'bg-amber-400 text-black'}>
+                          oficial: {c.platformStatus === 'VERIFICADO' ? `verificado ${c.platformVerifiedAt}` : 'sin cifra directa'}
+                        </Badge>
+                        <Badge variant="outline" className="text-[10px]">{c.scope}</Badge>
+                      </div>
+                      <div className="grid gap-2 mt-2 md:grid-cols-3">
+                        <div className="rounded-md bg-muted/60 p-2">
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Techo propio ({c.capSource === 'OFICIAL' ? 'oficial' : 'defensivo propio'})</p>
+                          <p className="text-xs mt-0.5">{c.ourCap}</p>
+                        </div>
+                        <div className="rounded-md border border-border p-2">
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Límite oficial</p>
+                          <p className="text-xs mt-0.5">{c.platformLimit ?? 'Sin cifra capturada en fuente directa (no se hardcodea)'}</p>
+                          {c.platformSource && <p className="text-[10px] text-muted-foreground mt-1 break-all">{c.platformSource}</p>}
+                        </div>
+                        <div className="rounded-md border border-dashed border-border p-2">
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Calibración de terceros (NO fuente de verdad)</p>
+                          <p className="text-xs mt-0.5">{c.calibration}</p>
+                        </div>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground mt-2">Razón: {c.rationale}</p>
+                      {c.liveCheck && <p className="text-[11px] text-emerald-700 mt-0.5">Verificación viva: {c.liveCheck}</p>}
+                    </div>
+                  ))}
+                  {(data.networkCaps ?? []).length === 0 && <p className="text-sm text-muted-foreground">Tabla no disponible: recarga la sección.</p>}
                 </div>
               </ScrollArea>
             </CardContent>
@@ -623,11 +682,11 @@ function SimulatorCard({ post, busy }: { post: (body: Record<string, unknown>, t
   const [operation, setOperation] = useState('FB_GROUP_POST');
   const [approved, setApproved] = useState(false);
   const [target, setTarget] = useState('');
-  const [result, setResult] = useState<{ verdict: string; reasons: string[]; conditions: string[] } | null>(null);
+  const [result, setResult] = useState<{ verdict: string; reasons: string[]; conditions: string[]; cap?: { network: string; scope: string; ourCap: string; platformStatus: string } | null } | null>(null);
 
   const run = async () => {
     const json = await post({ action: 'test-authorize', operation, approvedByHuman: approved, targetId: target || undefined }, 'sim');
-    if (json?.result) setResult(json.result as { verdict: string; reasons: string[]; conditions: string[] });
+    if (json?.result) setResult(json.result as { verdict: string; reasons: string[]; conditions: string[]; cap?: { network: string; scope: string; ourCap: string; platformStatus: string } | null });
   };
 
   return (
@@ -640,9 +699,16 @@ function SimulatorCard({ post, busy }: { post: (body: Record<string, unknown>, t
         <div className="flex flex-wrap gap-2 items-center">
           <select className="text-xs bg-background border border-border rounded-md px-2 py-1.5" value={operation} onChange={(e) => setOperation(e.target.value)} aria-label="Operación a simular">
             <option value="FB_GROUP_POST">FB_GROUP_POST (publicar en grupo)</option>
+            <option value="FB_PAGE_POST">FB_PAGE_POST (publicar en Página)</option>
             <option value="FB_JOIN_GROUP">FB_JOIN_GROUP (unirse a grupo)</option>
             <option value="FB_CAMPAIGN_APPROVAL">FB_CAMPAIGN_APPROVAL (aprobar campaña)</option>
+            <option value="IG_POST">IG_POST (publicar en Instagram)</option>
+            <option value="X_POST">X_POST (publicar en X)</option>
+            <option value="YT_UPLOAD">YT_UPLOAD (subir a YouTube)</option>
+            <option value="TT_POST">TT_POST (publicar en TikTok)</option>
+            <option value="TELEGRAM_POST">TELEGRAM_POST (publicar por bot)</option>
             <option value="AGENT_READ_BRIDGE">AGENT_READ_BRIDGE (lectura agéntica)</option>
+            <option value="BROWSER_AUTOMATION_POST">BROWSER_AUTOMATION_POST (regla fija §5.1)</option>
           </select>
           <label className="text-xs flex items-center gap-1">
             <input type="checkbox" checked={approved} onChange={(e) => setApproved(e.target.checked)} /> con aprobación humana
@@ -653,11 +719,17 @@ function SimulatorCard({ post, busy }: { post: (body: Record<string, unknown>, t
         {result && (
           <div className="mt-3 rounded-lg border border-border p-3">
             <Badge className={result.verdict === 'BLOQUEADO' ? 'bg-red-600 text-white' : result.verdict === 'POLITICA_DESACTUALIZADA' ? 'bg-amber-600 text-white' : result.verdict === 'PERMITIDO_CON_CONDICIONES' ? 'bg-emerald-600 text-white' : 'bg-muted'}>{result.verdict}</Badge>
+            {result.cap && (
+              <div className="mt-2 rounded-md bg-muted/60 p-2">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Techo propio aplicable</p>
+                <p className="text-xs mt-0.5"><strong>{result.cap.network}</strong> ({result.cap.scope}): {result.cap.ourCap}{result.cap.platformStatus === 'VERIFICADO' ? ' · oficial verificado' : ' · sin cifra oficial directa (se confirma por endpoint/consola)'}</p>
+              </div>
+            )}
             <ul className="list-disc pl-4 mt-2 space-y-0.5">
               {result.reasons.map((r, i) => <li key={i} className="text-xs">{r}</li>)}
             </ul>
             {result.conditions.length > 0 && (
-              <p className="text-[11px] text-muted-foreground mt-2">Condiciones: {result.conditions.length} regla(s) estándar exigidas (HITL, warmup, sin evasión, parada ante señales, auditoría).</p>
+              <p className="text-[11px] text-muted-foreground mt-2">Condiciones: {result.conditions.length} regla(s) exigidas (HITL, warmup, sin evasión, parada ante señales, auditoría{result.cap ? ', techo propio de la red' : ''}).</p>
             )}
           </div>
         )}

@@ -179,7 +179,13 @@ async function j(method, path, body, headers = {}) {
   check('reactivación exige nota (≥5 caracteres)', liftBad.status === 400);
   await j('POST', '/api/meta-policy', { action: 'lift-emergency', note: 'MP-TEST reactivación con nota' });
   const stLift = await j('GET', '/api/meta-policy');
-  check('tras levantar emergencia el motor vuelve a operar', !stLift.data.state?.killSwitch && stLift.data.state?.overall !== 'BLOQUEADO', `overall=${stLift.data.state?.overall}`);
+  check('tras levantar emergencia el kill switch desaparece', !stLift.data.state?.killSwitch, `overall=${stLift.data.state?.overall}`);
+  // Un BLOQUEADO residual solo es legítimo por mecanismos ajenos a la emergencia
+  // (p. ej. cambios CRÍTICOS abiertos en fuentes reales, hallazgo del 06/11/2026
+  // en yt-developer-policies: chrome rotativo de Google pendiente de análisis
+  // humano). Si no hay críticos abiertos, el motor debe volver a operar.
+  const criticosAbiertos = stLift.data.state?.changes?.bySeverity?.CRITICO ?? 0;
+  check('sin críticos abiertos el motor vuelve a operar (o el bloqueo residual es por críticos legítimos)', stLift.data.state?.overall !== 'BLOQUEADO' || criticosAbiertos > 0, `overall=${stLift.data.state?.overall} criticos=${criticosAbiertos}`);
 
   // ── CASO 11: conservación del historial (tras ciclo completo) ──
   console.log('11) Conservación del historial');
@@ -213,6 +219,28 @@ async function j(method, path, body, headers = {}) {
   const repM = await j('GET', '/api/meta-policy?report=monthly');
   check('informe diario con hechos/interpretaciones/recomendaciones separadas', repD.status === 200 && Array.isArray(repD.data.report?.facts) && Array.isArray(repD.data.report?.interpretations) && Array.isArray(repD.data.report?.recommendations));
   check('informe mensual distingue fuentes no verificables', repM.status === 200 && typeof repM.data.report?.numbers?.checks === 'number');
+
+  // ── P13: techos propios multi-red (destripe Blotato) ──
+  console.log('P13) Techos propios multi-red (tabla auditable + condición del motor)');
+  const capsGet = await j('GET', '/api/meta-policy');
+  const caps = capsGet.data.networkCaps ?? [];
+  check('GET /api/meta-policy expone networkCaps (tabla auditable)', capsGet.status === 200 && Array.isArray(caps) && caps.length >= 7, `n=${caps.length}`);
+  check('cada techo distingue límite oficial (VERIFICADO/NO_VERIFICADO) de techo propio y calibración de terceros', caps.every((c) => ['VERIFICADO', 'NO_VERIFICADO'].includes(c.platformStatus) && typeof c.ourCap === 'string' && c.ourCap.length > 0 && typeof c.calibration === 'string' && c.calibration.includes('Blotato')));
+  check('solo se declara VERIFICADO con fuente y fecha de verificación documental', caps.filter((c) => c.platformStatus === 'VERIFICADO').every((c) => !!c.platformSource && !!c.platformVerifiedAt));
+  const igCap = caps.find((c) => c.operation === 'IG_POST');
+  check('IG: techo propio (50) por debajo del oficial verificado (100) con endpoint vivo', !!igCap && igCap.platformStatus === 'VERIFICADO' && igCap.ourCap.startsWith('50') && !!igCap.liveCheck);
+  check('Telegram: límite oficial verificado presente', (caps.find((c) => c.operation === 'TELEGRAM_POST')?.platformLimit ?? '').includes('20 msg/min'));
+  check('TikTok: sin direct post hasta auditoría (techo honesto)', (caps.find((c) => c.operation === 'TT_POST')?.ourCap ?? '').includes('Sin direct post'));
+  const simCap = await j('POST', '/api/meta-policy', { action: 'test-authorize', operation: 'IG_POST', approvedByHuman: true });
+  check('simulador IG_POST → resultado lleva techo estructurado de Instagram', simCap.status === 200 && !!simCap.data.result?.cap && simCap.data.result.cap.network === 'Instagram' && !!simCap.data.result.cap.ourCap, JSON.stringify(simCap.data.result?.cap ?? {}).slice(0, 140));
+  check('si el veredicto permite operación, la condición de techo propio está presente', !['PERMITIDO_CON_CONDICIONES', 'REQUIERE_APROBACION'].includes(simCap.data.result?.verdict) || simCap.data.result.conditions.some((x) => x.includes('Techo propio Instagram')), `verdict=${simCap.data.result?.verdict}`);
+  const simRead = await j('POST', '/api/meta-policy', { action: 'test-authorize', operation: 'AGENT_READ_BRIDGE' });
+  check('lectura agéntica NO lleva techo (solo operaciones de publicación)', simRead.status === 200 && !simRead.data.result?.cap);
+  const simBrowser = await j('POST', '/api/meta-policy', { action: 'test-authorize', operation: 'BROWSER_AUTOMATION_POST', approvedByHuman: true });
+  check('regla fija §5.1 intacta: navegador no-API sigue BLOQUEADO aunque haya aprobación', simBrowser.status === 200 && simBrowser.data.result?.verdict === 'BLOQUEADO');
+  const llmsGet = await fetch(`${BASE}/llms.txt`);
+  const llmsText = await llmsGet.text();
+  check('llms.txt propio expone superficie agéntica con reglas permanentes', llmsGet.status === 200 && llmsText.includes('/api/fb-agent/fb-groups') && llmsText.includes('PENDING_APPROVAL') && llmsText.includes('HITL'));
 
   // ── Limpieza de artefactos de prueba (las fuentes test, grupo y worker) ──
   for (const s of [sNew, sDead, sStale]) {
