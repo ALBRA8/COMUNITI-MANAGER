@@ -65,6 +65,10 @@ export async function PATCH(req: NextRequest) {
   if (denied) return denied;
   const body = await req.json().catch(() => ({}));
   const { versionId, text } = body;
+  // F6-API-01: validación de entrada honesta (400) en vez de 500 de Prisma.
+  if (!versionId || typeof text !== 'string' || !text.trim()) {
+    return NextResponse.json({ error: 'versionId y text son requeridos' }, { status: 400 });
+  }
   const version = await db.postVersion.findUnique({ where: { id: versionId }, include: { draft: true } });
   if (!version) return NextResponse.json({ error: 'Versión no encontrada' }, { status: 404 });
   // F5-API-04: una versión ya publicada es registro, no borrador — no se

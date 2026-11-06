@@ -24,39 +24,44 @@ export async function POST(req: NextRequest) {
     : { topic };
 
   const task = await createTask(brandId, contract.toUpperCase(), 'RESEARCH', competitorHandle ? 'researcher' : 'researcher', payload);
-  // F5-DATA-01: nextRetryAt due desde el nacimiento — si el proceso muere a
-  // mitad del request, el sweep la despacha (runTask CAS evita dobles
-  // ejecuciones). Sin esto, PENDING con nextRetryAt null jamás casa en el
-  // filtro nextRetryAt lte now y queda zombie para siempre.
-  await db.task.update({ where: { id: task.id }, data: { nextRetryAt: new Date() } });
-
-  const res = await executeContract(contract, payload, { agent: 'researcher', brandId, taskId: task.id });
-
-  let evidenceId: string | null = null;
-  if (res.outcome === 'OK' && res.evidence) {
-    const ev = await db.evidence.create({
-      data: {
-        brandId,
-        source: res.evidence.source,
-        url: res.evidence.url ?? '',
-        claim: competitorHandle ? `Análisis de competidor ${competitorHandle}` : `Investigación: ${topic}`,
-        payloadJson: JSON.stringify(res.evidence.payload).slice(0, 8000),
-      },
-    });
-    evidenceId = ev.id;
+  // F6-DATA-01: la ejecución inline SOLO procede si esta request gana el CAS
+  // PENDING→RUNNING. Sin esto, la tarea quedaba PENDING+due mientras se
+  // ejecutaba aquí y el sweep del scheduler podía re-ejecutarla (Evidence
+  // duplicada). Si el sweep la gana, se le cede la ejecución.
+  const claimed = await db.task.updateMany({ where: { id: task.id, status: 'PENDING' }, data: { status: 'RUNNING', attempts: { increment: 1 } } });
+  if (claimed.count === 0) {
+    return NextResponse.json({ taskId: task.id, outcome: 'ERROR', reason: 'La tarea fue reclamada por el reintento del scheduler; revisa su resultado en el historial' }, { status: 409 });
   }
-
+  // F5-DATA-01: si el proceso muere a mitad del request, la tarea queda
+  // RUNNING y recoverInterrupted (al siguiente ciclo) la devuelve a PENDING
+  // con nextRetryAt due — el sweep la despacha. Nunca zombie.
   try {
-  const output = {
-    outcome: res.outcome,
-    data: res.data ?? null,
-    reason: res.reason,
-    dataState: res.outcome === 'OK' ? 'VERIFICADO' : res.outcome === 'CAPACITY_UNAVAILABLE' ? 'PENDIENTE_CREDENCIALES' : 'ERROR',
-  };
-  await db.task.update({ where: { id: task.id }, data: { status: res.outcome === 'OK' ? 'COMPLETED' : 'FAILED', outputJson: JSON.stringify(output), errorDetail: res.reason ?? '' } });
-  return NextResponse.json({ taskId: task.id, evidenceId, ...output });
+    const res = await executeContract(contract, payload, { agent: 'researcher', brandId, taskId: task.id });
+
+    let evidenceId: string | null = null;
+    if (res.outcome === 'OK' && res.evidence) {
+      const ev = await db.evidence.create({
+        data: {
+          brandId,
+          source: res.evidence.source,
+          url: res.evidence.url ?? '',
+          claim: competitorHandle ? `Análisis de competidor ${competitorHandle}` : `Investigación: ${topic}`,
+          payloadJson: JSON.stringify(res.evidence.payload).slice(0, 8000),
+        },
+      });
+      evidenceId = ev.id;
+    }
+
+    const output = {
+      outcome: res.outcome,
+      data: res.data ?? null,
+      reason: res.reason,
+      dataState: res.outcome === 'OK' ? 'VERIFICADO' : res.outcome === 'CAPACITY_UNAVAILABLE' ? 'PENDIENTE_CREDENCIALES' : 'ERROR',
+    };
+    await db.task.update({ where: { id: task.id }, data: { status: res.outcome === 'OK' ? 'COMPLETED' : 'FAILED', outputJson: JSON.stringify(output), errorDetail: res.reason ?? '' } });
+    return NextResponse.json({ taskId: task.id, evidenceId, ...output });
   } catch (e) {
-    await db.task.update({ where: { id: task.id }, data: { status: 'FAILED', errorDetail: `Fallo escribiendo el resultado: ${(e as Error).message.slice(0, 180)}` } }).catch(() => undefined);
+    await db.task.update({ where: { id: task.id }, data: { status: 'FAILED', errorDetail: `Fallo ejecutando/escribiendo la investigación: ${(e as Error).message.slice(0, 180)}` } }).catch(() => undefined);
     throw e;
   }
 }

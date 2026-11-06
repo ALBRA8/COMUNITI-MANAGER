@@ -25,6 +25,10 @@ npx prisma db push     # aplica app/prisma/schema.prisma a app/prisma/db/harness
 > asumen la disposición del workspace de desarrollo (scripts/ junto a src/).
 > En el repo entregado, corre las baterías desde `app/` con `TEST_BASE` apuntando
 > al server y ajusta el import relativo de `test-besttime.ts`, o usa el workspace.
+>
+> Los scripts de navegador (`e2e-browser-p2.sh`, `recap-browser.sh`) son
+> herramientas de captura del workspace de desarrollo: asumen node_modules y
+> la disposición de capturas de ese árbol; no forman parte del pipeline.
 
 ```bash
 bash scripts/run-with-server.sh \
