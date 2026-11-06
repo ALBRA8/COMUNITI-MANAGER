@@ -1,7 +1,7 @@
 // Test dirigido P1: adjuntos de imagen en FB-GROUPS (flujo completo por API, sin tocar Facebook).
 // 1) registra worker (HMAC)  2) importa grupo  3) crea campañas con adjuntos (válido/inválido/exceso)
 // 4) claim firmado → verifica mediaUrls en el payload del job  5) reporta FAILED y limpia.
-const BASE = process.env.TEST_BASE ?? 'http://localhost:3199';
+const BASE = process.env.TEST_BASE ?? 'http://localhost:3000';
 const stamp = Date.now();
 
 let pass = 0, fail = 0;
