@@ -23,9 +23,16 @@ const NET_LABEL: Record<string, string> = {
 export function BrandsSection({ harness, refresh }: SectionProps) {
   const [form, setForm] = useState({ name: '', identity: '', audience: '', tone: '', products: '', vocabulary: '', forbiddenWords: '', policies: '', maxPostsPerDay: 3, allowedHours: '08-20', networks: [] as string[] });
 
+  const [note, setNote] = useState('');
   const create = async () => {
     if (!form.name || !form.identity) return;
-    await fetch('/api/brands', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) });
+    const res = await fetch('/api/brands', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setNote(data.error ?? 'No se pudo crear la marca: revisa nombre/identidad (el nombre debe ser único).');
+      return;
+    }
+    setNote(`Marca "${form.name}" creada. Configura su memoria de marca para que la generación use su voz.`);
     setForm({ name: '', identity: '', audience: '', tone: '', products: '', vocabulary: '', forbiddenWords: '', policies: '', maxPostsPerDay: 3, allowedHours: '08-20', networks: [] });
     refresh();
   };
@@ -33,6 +40,7 @@ export function BrandsSection({ harness, refresh }: SectionProps) {
   return (
     <div>
       <SectionHeader title="Marcas y cuentas" description="Cada marca tiene memoria aislada; los datos de una marca nunca son accesibles desde otra." />
+      {note && <p className="text-xs text-muted-foreground mb-2">{note}</p>}
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>

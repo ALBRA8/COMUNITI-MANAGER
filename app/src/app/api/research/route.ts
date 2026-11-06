@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { createTask, runTask } from '@/lib/orchestrator';
+import { createTask } from '@/lib/orchestrator';
 import { executeContract } from '@/lib/executor';
 import { NETWORKS, type Network } from '@/lib/contracts';
 import { guardPanel } from '@/lib/panel-auth';

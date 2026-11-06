@@ -143,9 +143,12 @@ const sign = (raw, secret) => require('node:crypto').createHmac('sha256', secret
   }
   process.exit(fail ? 1 : 0);
 })().catch(async (e) => {
-  try { // higiene también en salida temprana (F2-OPS-01)
+  try { // higiene también en salida temprana (F2-OPS-01/F3-OPS-01): cliente propio porque este catch está fuera del closure principal
+    const { PrismaClient } = require('@prisma/client');
+    const prisma = new PrismaClient();
     const prev = globalThis.__prevAutonomy;
     if (prev === null) await prisma.setting.delete({ where: { key: 'autonomy_mode' } }).catch(() => undefined);
     else if (prev !== undefined) await prisma.setting.upsert({ where: { key: 'autonomy_mode' }, create: { key: 'autonomy_mode', value: prev }, update: { value: prev } });
+    await prisma.$disconnect();
   } catch { /* best effort */ }
 console.error('FATAL', e); process.exit(1); });

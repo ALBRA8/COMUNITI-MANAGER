@@ -103,7 +103,10 @@ export async function PATCH(req: NextRequest) {
     if (!['PENDING', 'FAILED'].includes(task.status)) {
       return NextResponse.json({ error: `Solo se pueden cancelar tareas PENDING o FAILED (estado actual: ${task.status})` }, { status: 400 });
     }
-    await db.fbJoinTask.update({ where: { id }, data: { status: 'CANCELLED', leaseUntil: null } });
+    // CAS (F3-ARC-02): el estado se re-valida en la escritura; si el worker lo
+    // leaseó entre lectura y aquí, se responde 409 en vez de pisar el lease.
+    const cancelled = await db.fbJoinTask.updateMany({ where: { id, status: { in: ['PENDING', 'FAILED'] } }, data: { status: 'CANCELLED', leaseUntil: null } });
+    if (cancelled.count === 0) return NextResponse.json({ error: 'La tarea ya no está cancelable (fue reclamada por un worker)' }, { status: 409 });
     await db.auditEntry.create({
       data: { actor: 'human', action: 'FB_JOIN_TASK_CANCELLED', targetType: 'FB_JOIN_TASK', targetId: id, allowed: true, reason: `Cancelada por el operador (${task.url})` },
     });

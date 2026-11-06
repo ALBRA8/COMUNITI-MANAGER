@@ -160,8 +160,10 @@ function SkillsLibrary({ brandId }: { brandId: string }) {
 
   const archive = async (id: string, name: string) => {
     setSaving(true);
-    await fetch('/api/skills', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'archive', id }) });
-    setNote(`Habilidad "${name}" archivada.`);
+    const res = await fetch('/api/skills', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'archive', id }) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) setNote(data.error ?? 'No se pudo archivar la habilidad.');
+    else setNote(`Habilidad "${name}" archivada.`);
     setSaving(false);
     load();
   };

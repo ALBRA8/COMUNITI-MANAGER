@@ -16,12 +16,13 @@ export async function POST(req: NextRequest) {
   // Estado honesto: la pausa defensiva no se pisa con IDLE y respeta el tipo de alerta.
   const paused = Boolean(result.pausedUntil) || /PAUSED_ANTI_BAN/.test(result.note ?? '');
   const pausedStatus = result.pausedKind === 'CHALLENGE' ? 'CHALLENGE_DETECTED' : 'PAUSED_ANTI_BAN';
+  // Estado honesto (F3-ARC-01): no se baja a IDLE un worker que ya está RUNNING
+  // por otro claim (post o join en vuelo); telemetría coherente con el panel.
+  const current = await db.fbWorker.findUnique({ where: { id: verification.worker.id }, select: { status: true } });
+  const nextStatus = paused ? pausedStatus : result.jobs.length > 0 ? 'RUNNING' : current?.status === 'RUNNING' ? 'RUNNING' : 'IDLE';
   await db.fbWorker.update({
     where: { id: verification.worker.id },
-    data: {
-      lastSeenAt: new Date(),
-      status: paused ? pausedStatus : result.jobs.length > 0 ? 'RUNNING' : 'IDLE',
-    },
+    data: { lastSeenAt: new Date(), status: nextStatus },
   }).catch(() => undefined);
 
   return NextResponse.json(result);

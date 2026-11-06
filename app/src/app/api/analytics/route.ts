@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { executeContract } from '@/lib/executor';
 import { guardPanel } from '@/lib/panel-auth';
-import { getAutonomyMode } from '@/lib/orchestrator';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;

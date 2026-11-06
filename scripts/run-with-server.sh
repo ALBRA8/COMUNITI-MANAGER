@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
 # Levanta el dev server, espera ready, corre los tests indicados y apaga el server.
 # Uso: bash scripts/run-with-server.sh "node scripts/test-a.cjs" "node scripts/test-b.cjs" ...
-cd /home/z/my-project
+# Raíz del proyecto portable (F3-OPS-04): en el workspace, scripts/ cuelga de la
+# raíz Next; en el repo entregado, la app vive en app/.
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if [ -f "$ROOT/package.json" ]; then cd "$ROOT";
+elif [ -f "$ROOT/app/package.json" ]; then cd "$ROOT/app";
+else echo "[runner] no encuentro package.json ni en $ROOT ni en $ROOT/app" >&2; exit 1; fi
 
 ./node_modules/.bin/next dev -p 3000 > /tmp/dev-server.log 2>&1 &
 SERVER_PID=$!

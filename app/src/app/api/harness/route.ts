@@ -42,7 +42,10 @@ export async function POST(req: NextRequest) {
   if (body.action === 'resume') {
     const { setPaused } = await import('@/lib/orchestrator');
     await setPaused(false);
-    return NextResponse.json({ ok: true, paused: false });
+    // F3-DATA-04: las tareas que la pausa dejó en PAUSED vuelven a PENDING con
+    // reintento inmediato; sin esto quedaban zombie sin vía de salida.
+    const requeued = await db.task.updateMany({ where: { status: 'PAUSED' }, data: { status: 'PENDING', nextRetryAt: new Date() } });
+    return NextResponse.json({ ok: true, paused: false, requeuedTasks: requeued.count });
   }
   if (body.action === 'set_mode') {
     const mode = String(body.mode);

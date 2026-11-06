@@ -119,7 +119,10 @@ export async function runScheduleNow(scheduleId: string): Promise<{ ok: boolean;
   if (!s) return { ok: false, note: 'Programación no encontrada' };
   if (await isPaused()) return { ok: false, note: 'Pausa global activa: no se disparan ciclos' };
 
-  await db.schedule.update({ where: { id: s.id }, data: { lastRunAt: new Date() } });
+  // CAS (F3-ARC-03): si el tick interno la disparó justo antes, no se
+  // duplica el ciclo del día (mismo patrón que runDueSchedules).
+  const cas = await db.schedule.updateMany({ where: { id: s.id, lastRunAt: s.lastRunAt }, data: { lastRunAt: new Date() } });
+  if (cas.count === 0) return { ok: false, note: 'La programación acaba de dispararse (anti-doble-disparo); revisa el historial' };
   runFullCycle(s.brandId, { topic: s.topic || undefined, objective: s.objective || undefined })
     .then((res) => {
       const stopped = res.stoppedAt ? ` · detenido en ${res.stoppedAt}` : '';
@@ -168,6 +171,8 @@ async function policyWatchTick(): Promise<void> {
  *  que runTask escribe en nextRetryAt solo tiene efecto si alguien vuelve a
  *  despacharlas; sin esto quedaban zombies para siempre. Tope de 3 por tick. */
 async function retryPendingTasks(): Promise<number> {
+  const { isPaused } = await import('@/lib/orchestrator');
+  if (await isPaused()) return 0; // durante la pausa global no se despacha nada (F3-DATA-04)
   const due = await db.task.findMany({
     where: { status: 'PENDING', nextRetryAt: { lte: new Date() } },
     orderBy: { nextRetryAt: 'asc' },

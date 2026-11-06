@@ -19,8 +19,13 @@ cd app && npx prisma db push  # aplica app/prisma/schema.prisma a app/prisma/db/
 
 ## Pruebas (8 baterías, se corren contra un dev server en :3000)
 
+> Nota: corre las baterías desde un árbol donde `scripts/` esté junto a `src/`
+> (como el workspace de desarrollo). En este repo la app vive en `app/`; el
+> runner ya resuelve la raíz automáticamente, pero `test-besttime.ts` usa un
+> import relativo a `../src` que asume esa disposición.
+
 ```bash
-bash bash scripts/run-with-server.sh \
+bash scripts/run-with-server.sh \
   "node scripts/test-p2-approval.cjs" \
   "node scripts/e2e-fb-groups.cjs" \
   "node scripts/test-joins-fb.cjs" \

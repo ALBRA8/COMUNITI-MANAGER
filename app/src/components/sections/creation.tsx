@@ -71,7 +71,11 @@ export function CreationSection({ harness, brandId, refresh }: SectionProps) {
 
   const saveVersion = async (versionId: string) => {
     const res = await fetch('/api/drafts', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ versionId, text: editing[versionId] }) });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setNote(data.error ?? 'No se pudo guardar la versión (intenta de nuevo).');
+      return;
+    }
     setNote(data.validation?.ok ? 'Versión validada correctamente.' : `Incidencias: ${data.validation?.issues?.join(' · ')}`);
     load();
   };

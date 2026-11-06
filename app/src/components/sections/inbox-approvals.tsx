@@ -152,6 +152,7 @@ interface ApprovalItem {
 export function ApprovalsSection({ harness, brandId, refresh }: SectionProps) {
   const [items, setItems] = useState<ApprovalItem[]>([]);
   const [reason, setReason] = useState<Record<string, string>>({});
+  const [note, setNote] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -168,8 +169,20 @@ export function ApprovalsSection({ harness, brandId, refresh }: SectionProps) {
     setItems(await res.json());
   }, []);
 
+  const [deciding, setDeciding] = useState<string | null>(null);
   const decide = async (id: string, decision: string) => {
-    await fetch('/api/approvals', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, decision, reason: reason[id] ?? '' }) });
+    if (deciding) return;
+    setDeciding(id);
+    try {
+      const res = await fetch('/api/approvals', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, decision, reason: reason[id] ?? '' }) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) setNote(data.error ?? 'La decisión no se pudo registrar.');
+      else setNote(decision === 'APPROVED' ? 'Aprobación registrada.' : 'Rechazo registrado.');
+    } catch {
+      setNote('Fallo de red registrando la decisión.');
+    } finally {
+      setDeciding(null);
+    }
     load(); refresh();
   };
 
@@ -179,6 +192,7 @@ export function ApprovalsSection({ harness, brandId, refresh }: SectionProps) {
   return (
     <div>
       <SectionHeader title="Cola de aprobaciones" description="Publicar, responder y moderar requieren aprobación según el modo de autonomía. Toda decisión queda auditada." />
+      {note && <p className="text-xs text-muted-foreground mb-2">{note}</p>}
       <div className="space-y-2">
         {pending.length === 0 && <Card><CardContent className="py-6 text-center text-sm text-muted-foreground">No hay aprobaciones pendientes.</CardContent></Card>}
         {pending.map((a) => (
@@ -192,8 +206,10 @@ export function ApprovalsSection({ harness, brandId, refresh }: SectionProps) {
               <p className="text-sm">{a.summary}</p>
               <Input placeholder="Motivo de la decisión (opcional)" value={reason[a.id] ?? ''} onChange={(e) => setReason({ ...reason, [a.id]: e.target.value })} className="text-xs" />
               <div className="flex gap-2">
-                <Button size="sm" onClick={() => decide(a.id, 'APPROVED')}>Aprobar</Button>
-                <Button size="sm" variant="destructive" onClick={() => decide(a.id, 'REJECTED')}>Rechazar</Button>
+                <Button size="sm" disabled={deciding !== null}
+                                    onClick={() => decide(a.id, 'APPROVED')}>Aprobar</Button>
+                <Button size="sm" variant="destructive" disabled={deciding !== null}
+                                    onClick={() => decide(a.id, 'REJECTED')}>Rechazar</Button>
               </div>
             </CardContent>
           </Card>

@@ -8,21 +8,6 @@ import { loadBrandMemory, validateContent, classifyByRules, withinAllowedHours }
 import { requiresApproval, riskOfAction, CYCLE_PHASES, type AgentKey, type CyclePhase, type TaskStatus } from '@/lib/contracts';
 import { z } from 'zod';
 
-const PHASE_AGENT: Record<CyclePhase, AgentKey> = {
-  RESEARCH: 'researcher',
-  ANALYZE: 'trends',
-  PLAN: 'planner',
-  CREATE: 'writer',
-  VALIDATE: 'supervisor',
-  APPROVE: 'planner',
-  PUBLISH: 'publisher',
-  VERIFY: 'publisher',
-  ENGAGE: 'community',
-  MEASURE: 'analyst',
-  LEARN: 'optimizer',
-  OPTIMIZE: 'strategy',
-};
-
 // ─── Utilidades de tareas ─────────────────────────────────────────
 
 export async function createTask(brandId: string, type: string, phase: CyclePhase, agent: AgentKey, input: Record<string, unknown>, idempotencyKey?: string) {

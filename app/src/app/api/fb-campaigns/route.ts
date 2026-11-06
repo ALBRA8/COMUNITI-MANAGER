@@ -219,12 +219,16 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: `Motor de cumplimiento Meta: ${policy.verdict}`, policy }, { status: 403 });
     }
     const res = await db.fbJob.updateMany({ where: { campaignId: campaign.id, status: 'PENDING_APPROVAL' }, data: { status: 'QUEUED' } });
-    await db.fbCampaign.update({ where: { id: campaign.id }, data: { status: 'QUEUED', approvedAt: new Date() } });
+    // CAS (F3-ARC-02): la campaña solo pasa DRAFT→QUEUED si sigue DRAFT.
+    const armed = await db.fbCampaign.updateMany({ where: { id: campaign.id, status: 'DRAFT' }, data: { status: 'QUEUED', approvedAt: new Date() } });
+    if (armed.count === 0) return NextResponse.json({ error: 'La campaña ya no es un borrador' }, { status: 409 });
     await db.auditEntry.create({ data: { actor: 'human', action: 'FB_CAMPAIGN_APPROVED', targetType: 'FB_CAMPAIGN', targetId: campaign.id, allowed: true, reason: `Campaña "${campaign.name}" APROBADA pre-vuelo por un humano (política Meta: ${policy.verdict}): ${res.count} job(s) entran en cola (dentro de ventana y techo el worker los reclama)` } });
     return NextResponse.json({ ok: true, approved: res.count, policy: { verdict: policy.verdict, conditions: policy.conditions, cap: policy.cap ?? null } });
   } else if (body.action === 'cancel') {
     if (campaign.status === 'CANCELLED') return NextResponse.json({ ok: true });
-    await db.fbCampaign.update({ where: { id: campaign.id }, data: { status: 'CANCELLED' } });
+    // CAS (F3-ARC-02): solo se cancela desde un estado activo real.
+    const cancelled = await db.fbCampaign.updateMany({ where: { id: campaign.id, status: { in: ['DRAFT', 'QUEUED', 'RUNNING', 'PAUSED'] } }, data: { status: 'CANCELLED' } });
+    if (cancelled.count === 0) return NextResponse.json({ error: 'La campaña ya estaba cerrada' }, { status: 409 });
     // F2-ARC-05: los leases EN VUELO no se revocan (filosofía igual que la
     // pausa): el post en vuelo terminará y se reportará con honestidad; el
     // guard de reportes ya ignora estados terminales si llegó tarde.
