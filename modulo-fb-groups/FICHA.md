@@ -289,3 +289,17 @@ exacto; un POSTED sin URL se degrada a FAILED por honestidad).
   cambio CRÍTICO en yt-developer-policies (chrome rotativo de Google, falso
   positivo probable) que bloquea operaciones hasta que el operador lo analice.
   *(hecho)*
+
+- **Auditoría integral production-ready (06/11/2026)**: 9 ciclos con 5
+  auditores independientes y corrección autónoma de causa raíz hasta 2 pasadas
+  limpias consecutivas (ciclos 8-9). Motor: reclamos atómicos, reaper de
+  leases con CAS, reportes idempotentes solo desde LEASED, techo con in-flight,
+  corte nocturno real con nightOverride, CAS en todas las transiciones de
+  campaña y decisiones HITL, gracia de 120 s en recuperación de RUNNING.
+  Seguridad: PANEL_TOKEN opcional en 23 mutaciones, webhooks/tick fail-closed,
+  hrefs https-only, cabeceras, log de queries solo en dev. DevOps: build copia
+  schema+DB al standalone (despliegue verificado en vivo con /api/health),
+  healthcheck, error boundaries, README de despliegue. Certificación final:
+  regresión 199/199 · tsc 0 · lint 0 · build · cola limpia · smoke standalone
+  (health db ok, 404 real). Documentos: AUDIT_REPORT.md,
+  PRODUCTION_READINESS.md, CHANGELOG.md. *(hecho)*
