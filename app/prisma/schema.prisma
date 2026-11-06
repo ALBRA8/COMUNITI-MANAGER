@@ -277,6 +277,9 @@ model AuditEntry {
   reason     String   @default("")
   dataJson   String   @default("{}")
   createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([targetType, targetId, createdAt])
 }
 
 // ─── Programaciones (scheduler del ciclo) ─────────────────────────
@@ -373,6 +376,7 @@ model FbCampaign {
   firstComment String   @default("")
   windowStart  Int      @default(7) // hora local inicio ventana de publicación
   windowEnd    Int      @default(21)
+  nightOverride Boolean @default(false) // FICHA §6.3: levanta el corte nocturno 22:00-07:00 explícitamente (forzado auditado al crear)
   mediaUrls    String   @default("[]") // JSON: hasta 4 adjuntos (URL http(s) o ruta local del worker)
   mediaMode    String   @default("all") // all: todos los adjuntos en cada post | rotate: una imagen distinta por grupo (rotación determinista)
   commentDelaySec Int    @default(0) // espera antes del primer comentario (bump-comment con delay, 0 = inmediato)
@@ -412,6 +416,9 @@ model FbJob {
   worker   FbWorker?  @relation(fields: [workerId], references: [id])
 
   @@index([status, leaseUntil])
+  @@index([campaignId, status, createdAt])
+  @@index([workerId])
+  @@index([groupId])
 }
 
 model FbJoinTask {
@@ -431,6 +438,7 @@ model FbJoinTask {
   worker FbWorker? @relation(fields: [workerId], references: [id])
 
   @@index([status, leaseUntil])
+  @@index([workerId, status])
 }
 
 model FbDailyUsage {
@@ -509,7 +517,7 @@ model MetaPolicyVersion {
 
   source MetaPolicySource @relation(fields: [sourceId], references: [id])
 
-  @@index([sourceId, versionNumber])
+  @@unique([sourceId, versionNumber])
 }
 
 model MetaPolicyCheckRun {

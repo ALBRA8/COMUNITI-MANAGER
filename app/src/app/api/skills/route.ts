@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { ensureSkillSeeds } from '@/lib/skills';
+import { guardPanel } from '@/lib/panel-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,6 +21,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const denied = guardPanel(req);
+  if (denied) return denied;
   const body = await req.json().catch(() => ({}));
 
   if (body.action === 'update') {

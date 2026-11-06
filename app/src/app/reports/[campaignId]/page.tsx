@@ -132,7 +132,7 @@ export default async function CampaignReport({ params }: { params: Promise<{ cam
                   <td className="px-3 py-2 text-zinc-500">{j.variantSource}</td>
                   <td className="px-3 py-2 whitespace-nowrap text-zinc-500">{j.postedAt ? fmt(j.postedAt) : '—'}</td>
                   <td className="max-w-[260px] truncate px-3 py-2 text-zinc-500" title={j.postUrl || j.failReason}>
-                    {j.postUrl ? <a href={j.postUrl} target="_blank" rel="noreferrer" className="text-teal-700 underline-offset-2 hover:underline dark:text-teal-400">ver post</a> : (j.failReason || (j.worker?.name ? `worker: ${j.worker.name}` : '—'))}
+                    {/^https:\/\//i.test(j.postUrl) ? <a href={j.postUrl} target="_blank" rel="noreferrer" className="text-teal-700 underline-offset-2 hover:underline dark:text-teal-400">ver post</a> : (j.failReason || (j.worker?.name ? `worker: ${j.worker.name}` : '—'))}
                   </td>
                 </tr>
               ))}

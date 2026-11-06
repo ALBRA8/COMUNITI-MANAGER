@@ -31,7 +31,7 @@ export interface HarnessState {
   paused: boolean;
   tools: { key: string; provider: string; category: string; description: string; contracts: string[]; status: string; capabilities: string[]; rateLimit: string; costNote: string; lastResult: string }[];
   agents: { key: string; name: string; role: string; limits: string; allowedContracts: string[] }[];
-  brands: { id: string; name: string; identity: string; tone: string; maxPostsPerDay: number; allowedHours: string; accounts: { id: string; network: string; handle: string; status: string }[]; _count: { publications: number; drafts: number } }[];
+  brands: { id: string; name: string; identity: string; tone: string; maxPostsPerDay: number; allowedHours: string; products?: string; audience?: string; vocabulary?: string; forbiddenWords?: string; policies?: string; faqs?: string; approvedExamples?: string; supportInfo?: string; accounts: { id: string; network: string; handle: string; status: string }[]; _count: { publications: number; drafts: number } }[];
   alerts: { unresolvedErrors: number; pendingApprovals: number };
 }
 

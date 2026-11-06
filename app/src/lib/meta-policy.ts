@@ -122,7 +122,7 @@ export interface SourceSeed {
   url: string;
   product: string;
   alsoCovers?: string;
-  family: 'A' | 'B' | 'C' | 'D';
+  family: 'A' | 'B' | 'C' | 'D' | 'E';
   priority: 'DAILY' | 'WEEKLY' | 'MANUAL';
   method: 'HTTP_GET' | 'MANUAL';
   checkIntervalHours: number;

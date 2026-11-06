@@ -291,7 +291,7 @@ async function runPhase(
       if (!draft) throw new Error('Borrador no encontrado');
 
       // Idempotencia: ¿ya hay publicación para este draft+network?
-      const results = [];
+      const results: Array<{ network: string; status: string; note?: string; externalId?: string | null }> = [];
       for (const v of draft.versions) {
         const idemKey = `${draft.id}:${v.network}:${v.id}`;
         const existing = await db.publication.findUnique({ where: { idempotencyKey: idemKey } });
@@ -345,7 +345,7 @@ async function runPhase(
 
     case 'VERIFY': {
       const pubs = await db.publication.findMany({ where: { brandId: memory.id, status: 'PUBLISHED', verifyStatus: 'UNVERIFIED' }, take: 20 });
-      const out = [];
+      const out: Array<{ publicationId: string; verifyStatus: string; note: string }> = [];
       for (const p of pubs) {
         const res = await executeContract('verify_publication', { network: p.network, externalId: p.externalId }, { agent: 'publisher', brandId: memory.id, taskId, idempotencyKey: `verify:${p.id}` });
         const status = res.outcome === 'OK' ? 'VERIFIED' : res.outcome === 'CAPACITY_UNAVAILABLE' ? 'UNVERIFIED' : 'UNVERIFIED';
@@ -357,7 +357,7 @@ async function runPhase(
 
     case 'ENGAGE': {
       const comments = await db.comment.findMany({ where: { brandId: memory.id, status: 'PENDING' }, take: 10 });
-      const out = [];
+      const out: Array<{ id: string; classification: string; risk: string }> = [];
       for (const c of comments) {
         const cls = classifyByRules(c.text);
         const updated = await db.comment.update({

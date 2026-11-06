@@ -148,6 +148,9 @@ export function FbGroupsSection({ brandId, refresh }: SectionProps) {
       await load();
       refresh?.();
       return data;
+    } catch (e) {
+      setNotice({ msg: `Fallo de red: ${(e as Error).message}`, ok: false });
+      return null;
     } finally {
       setBusy(false);
     }
@@ -293,11 +296,12 @@ export function FbGroupsSection({ brandId, refresh }: SectionProps) {
           <GroupImport busy={busy} onImport={async (payload) => {
             await post('/api/fb-groups', payload, `Importación completada: ${payload.groups.length} grupos procesados`);
           }} />
-          {groups.length > 0 && <GroupsTable groups={groups} busy={busy} onToggle={async (g) => {
-            await fetch('/api/fb-groups', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: g.id, excluded: !g.excluded }) });
-            setNotice({ msg: `Grupo "${g.name}" ${g.excluded ? 'de vuelta en rotación' : 'excluido de la rotación'}`, ok: true });
+          {groups.length > 0 ? <GroupsTable groups={groups} busy={busy} onToggle={async (g) => {
+            const res = await fetch('/api/fb-groups', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: g.id, excluded: !g.excluded }) });
+            const data = await res.json().catch(() => ({}));
+            setNotice({ msg: res.ok ? `Grupo "${g.name}" ${g.excluded ? 'de vuelta en rotación' : 'excluido de la rotación'}` : (data.error ?? 'No se pudo actualizar'), ok: res.ok });
             await load();
-          }} />}
+          }} /> : <p className="text-xs text-muted-foreground">Sin grupos importados todavía: el worker los sincroniza (fb_groups_sync) o pégalos a mano arriba.</p>}
         </CardContent>
       </Card>
 
@@ -341,7 +345,7 @@ export function FbGroupsSection({ brandId, refresh }: SectionProps) {
                   <tbody>
                     {joinTasks.map((t) => (
                       <tr key={t.id} className="border-t transition-colors hover:bg-muted/40">
-                        <td className="p-2 max-w-[220px] truncate"><a href={t.url} target="_blank" rel="noreferrer" className="underline-offset-2 hover:underline">{t.fbId}</a></td>
+                        <td className="p-2 max-w-[220px] truncate">{/^https:\/\//i.test(t.url) ? <a href={t.url} target="_blank" rel="noreferrer" className="underline-offset-2 hover:underline">{t.fbId}</a> : t.fbId}</td>
                         <td className="p-2"><code className="text-[10px]">{t.keyword || '—'}</code></td>
                         <td className="p-2"><span className={JOIN_STATUS_CHIP[t.status] ?? CHIP_NEUTRAL}>{JOIN_STATUS_LABEL[t.status] ?? t.status}</span></td>
                         <td className="p-2 text-muted-foreground max-w-[260px] truncate" title={t.failReason}>
@@ -396,16 +400,21 @@ export function FbGroupsSection({ brandId, refresh }: SectionProps) {
         <CardContent className="space-y-4">
           <CampaignForm busy={busy} brandId={brandId} groups={groups} workers={workers} library={mediaLib} onCreate={async (payload) => {
             const data = await post('/api/fb-campaigns', payload, 'Borrador de campaña creado. Apruébalo desde la lista para armarlo: el worker no ve nada sin aprobación.');
+            if (!data) return false;
+            const conds = Array.isArray(data.policy?.conditions) ? (data.policy.conditions as string[]) : [];
             if (data?.risk) {
               const r = data.risk as RiskResult;
-              setNotice({ msg: `Borrador creado · riesgo pre-vuelo ${r.score}/100 (${r.level})${r.mitigations.length ? ` · ${r.mitigations[0]}` : ''} · púlsalo Aprobar en la lista para armarlo`, ok: r.level !== 'ALTO' });
+              setNotice({ msg: `Borrador creado · riesgo pre-vuelo ${r.score}/100 (${r.level})${r.mitigations.length ? ` · ${r.mitigations[0]}` : ''}${conds.length ? ` · motor: ${conds.join(' · ')}` : ''} · púlsalo Aprobar en la lista para armarlo`, ok: r.level !== 'ALTO' });
+            } else if (conds.length) {
+              setNotice({ msg: `Borrador creado · motor: ${conds.join(' · ')}`, ok: true });
             }
+            return true;
           }} />
-          {campaigns.length > 0 && (
+          {campaigns.length > 0 ? (
             <div className="space-y-2.5">
               {campaigns.map((c) => <CampaignRow key={c.id} campaign={c} busy={busy} onChanged={load} setNotice={setNotice} />)}
             </div>
-          )}
+          ) : <p className="text-xs text-muted-foreground">Sin campañas todavía: crea la primera arriba (nace borrador hasta que un humano la apruebe).</p>}
         </CardContent>
       </Card>
 
@@ -527,7 +536,7 @@ function GroupsTable({ groups, busy, onToggle }: {
           <tbody>
             {shown.map((g) => (
               <tr key={g.id} className="border-t transition-colors hover:bg-muted/40">
-                <td className="p-2 max-w-[240px] truncate" title={g.name}>{g.url ? <a href={g.url} target="_blank" rel="noreferrer" className="underline-offset-2 hover:underline">{g.name}</a> : g.name}</td>
+                <td className="p-2 max-w-[240px] truncate" title={g.name}>{/^https:\/\//i.test(g.url ?? '') ? <a href={g.url} target="_blank" rel="noreferrer" className="underline-offset-2 hover:underline">{g.name}</a> : g.name}</td>
                 <td className="p-2"><code className="text-[10px]">{g.collection}</code></td>
                 <td className="p-2 text-muted-foreground">{g.lastPostedAt ? new Date(g.lastPostedAt).toLocaleDateString('es-CO') : '—'}</td>
                 <td className="p-2">
@@ -658,7 +667,7 @@ function CampaignForm({ busy, brandId, groups, workers, library, onCreate }: {
   groups: FbGroupRow[];
   workers: FbWorkerRow[];
   library: FbMediaRow[];
-  onCreate: (payload: Record<string, unknown>) => Promise<void>;
+  onCreate: (payload: Record<string, unknown>) => Promise<boolean | void>;
 }) {
   const [name, setName] = useState('');
   const [text, setText] = useState('');
@@ -782,7 +791,9 @@ function CampaignForm({ busy, brandId, groups, workers, library, onCreate }: {
       <RiskGauge input={riskInput} hasWorker={hasWorker} />
       <Button size="sm" className="h-8 text-xs" disabled={busy || !name || !text || (mode !== 'profile' && selected.length === 0)}
         onClick={async () => {
-          await onCreate({
+          // Solo se limpia el formulario si la campaña se creó (F-UX-03): con
+          // 403 del motor o 400 de validación, el texto redactado se conserva.
+          const created = await onCreate({
             brandId, name, text, mode, engine: 'dom', firstComment,
             commentDelaySec: Math.max(0, Number(commentDelaySec) || 0),
             boldStyle,
@@ -791,8 +802,10 @@ function CampaignForm({ busy, brandId, groups, workers, library, onCreate }: {
             windowStart: Number(windowStart), windowEnd: Number(windowEnd),
             targets: mode === 'profile' ? [] : selected,
             approve: approveNow,
-          });
-          setName(''); setText(''); setFirstComment(''); setMedia(''); setSelected([]); setRotate(false); setCommentDelaySec('0'); setApproveNow(false);
+          }) !== false;
+          if (created) {
+            setName(''); setText(''); setFirstComment(''); setMedia(''); setSelected([]); setRotate(false); setCommentDelaySec('0'); setApproveNow(false);
+          }
         }}>
         Crear campaña ({mode === 'profile' ? 1 : selected.length} objetivo{mode === 'profile' ? '' : 's'}{mediaUrls.length ? ` · ${mediaUrls.length} adjunto${mediaUrls.length > 1 ? 's' : ''}${rotate && mediaUrls.length > 1 ? ' rotados' : ''}` : ''}{approveNow ? ' · aprobada al crear' : ' · como borrador'})
       </Button>
@@ -879,7 +892,7 @@ function CampaignRow({ campaign, busy, onChanged, setNotice }: {
                   <td className="p-2 text-muted-foreground">{j.variantSource}</td>
                   <td className="p-2 text-muted-foreground">{j.postedAt ? new Date(j.postedAt).toLocaleString('es-CO') : '—'}</td>
                   <td className="p-2 max-w-[240px] truncate text-muted-foreground" title={j.failReason}>
-                    {j.postUrl ? <a href={j.postUrl} target="_blank" rel="noreferrer" className="text-primary underline-offset-2 hover:underline">ver post</a> : j.failReason || (j.workerName ? `worker: ${j.workerName}` : '—')}
+                    {/^https:\/\//i.test(j.postUrl) ? <a href={j.postUrl} target="_blank" rel="noreferrer" className="text-primary underline-offset-2 hover:underline">ver post</a> : j.failReason || (j.workerName ? `worker: ${j.workerName}` : '—')}
                   </td>
                 </tr>
               ))}
@@ -893,25 +906,32 @@ function CampaignRow({ campaign, busy, onChanged, setNotice }: {
             <Printer className="h-3.5 w-3.5" aria-hidden /> Informe
           </Button>
         </a>
-        {!isDraft && (
+        {(c.status === 'QUEUED' || c.status === 'RUNNING' || c.status === 'PAUSED') && (
           <>
-            <Button size="sm" variant="outline" className="h-7 text-xs" disabled={busy} onClick={async () => {
-              await fetch('/api/fb-campaigns', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ campaignId: c.id, action: 'pause' }) });
-              setNotice({ msg: 'Campaña pausada', ok: true }); await onChanged();
-            }}>
-              Pausar
-            </Button>
-            <Button size="sm" variant="outline" className="h-7 text-xs" disabled={busy} onClick={async () => {
-              await fetch('/api/fb-campaigns', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ campaignId: c.id, action: 'resume' }) });
-              setNotice({ msg: 'Campaña reanudada', ok: true }); await onChanged();
-            }}>
-              Reanudar
-            </Button>
+            {(c.status === 'QUEUED' || c.status === 'RUNNING') && (
+              <Button size="sm" variant="outline" className="h-7 text-xs" disabled={busy} onClick={async () => {
+                const res = await fetch('/api/fb-campaigns', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ campaignId: c.id, action: 'pause' }) });
+                const data = await res.json().catch(() => ({}));
+                setNotice({ msg: res.ok ? 'Campaña pausada (los leases en vuelo terminan su ciclo y se reportan)' : (data.error ?? 'No se pudo pausar'), ok: res.ok }); await onChanged();
+              }}>
+                Pausar
+              </Button>
+            )}
+            {c.status === 'PAUSED' && (
+              <Button size="sm" variant="outline" className="h-7 text-xs" disabled={busy} onClick={async () => {
+                const res = await fetch('/api/fb-campaigns', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ campaignId: c.id, action: 'resume' }) });
+                const data = await res.json().catch(() => ({}));
+                setNotice({ msg: res.ok ? 'Campaña reanudada' : (data.error ?? 'No se pudo reanudar'), ok: res.ok }); await onChanged();
+              }}>
+                Reanudar
+              </Button>
+            )}
           </>
         )}
         <Button size="sm" variant="destructive" className="h-7 text-xs" disabled={busy} onClick={async () => {
-          await fetch('/api/fb-campaigns', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ campaignId: c.id, action: 'cancel' }) });
-          setNotice({ msg: isDraft ? 'Borrador cancelado' : 'Campaña cancelada', ok: true }); await onChanged();
+          const res = await fetch('/api/fb-campaigns', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ campaignId: c.id, action: 'cancel' }) });
+          const data = await res.json().catch(() => ({}));
+          setNotice({ msg: res.ok ? (isDraft ? 'Borrador cancelado' : 'Campaña cancelada') : (data.error ?? 'No se pudo cancelar'), ok: res.ok }); await onChanged();
         }}>
           Cancelar
         </Button>
@@ -985,7 +1005,7 @@ function WeekCalendar({ campaigns }: { campaigns: FbCampaignRow[] }) {
           ))}
         </div>
       )}
-      <div className="grid grid-cols-7 gap-1.5">
+      <div className="overflow-x-auto -mx-1 px-1"><div className="grid min-w-[640px] grid-cols-7 gap-1.5">
         {days.map((d, i) => {
           const key = dayKey(d);
           const items = byDay.get(key) ?? [];
@@ -1009,7 +1029,7 @@ function WeekCalendar({ campaigns }: { campaigns: FbCampaignRow[] }) {
             </div>
           );
         })}
-      </div>
+      </div></div>
       {campaigns.length === 0 && <p className="text-muted-foreground">Sin campañas aún: cuando publiques, cada entrega aparecerá en el día real en que ocurrió.</p>}
     </div>
   );

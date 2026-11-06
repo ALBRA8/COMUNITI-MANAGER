@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import crypto from 'crypto';
 import { db } from '@/lib/db';
 import { runDueSchedules, runScheduleNow, schedulerLoopState } from '@/lib/scheduler';
-import { computeSignature } from '@/lib/webhook-security';
+import { computeSignature, isLoopbackRequest } from '@/lib/webhook-security';
+import { guardPanel } from '@/lib/panel-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,19 +24,28 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
 
-  // Tick para cron externo: exige el mismo secreto del arnés (si está configurado)
+  // Tick para cron externo: exige el mismo secreto del arnés (si está configurado).
+  // Comparación en tiempo constante (F-SEC-07) y fail-closed fuera de localhost.
   if (body.action === 'tick') {
     const secret = process.env.HARNESS_WEBHOOK_SECRET;
     if (secret) {
       const expected = computeSignature('', secret);
-      const provided = req.headers.get('x-harness-signature') ?? '';
-      if (provided !== expected && req.headers.get('authorization') !== `Bearer ${secret}`) {
+      const providedSig = req.headers.get('x-harness-signature') ?? '';
+      const providedBearer = (req.headers.get('authorization') ?? '').replace(/^Bearer\s+/i, '');
+      const okSig = providedSig.length === expected.length && crypto.timingSafeEqual(Buffer.from(providedSig), Buffer.from(expected));
+      const okBearer = providedBearer.length === secret.length && crypto.timingSafeEqual(Buffer.from(providedBearer), Buffer.from(secret));
+      if (!okSig && !okBearer) {
         return NextResponse.json({ error: 'Firma inválida' }, { status: 401 });
       }
+    } else if (!isLoopbackRequest(req.headers)) {
+      return NextResponse.json({ error: 'Tick remoto deshabilitado: configura HARNESS_WEBHOOK_SECRET' }, { status: 503 });
     }
     const result = await runDueSchedules();
     return NextResponse.json(result);
   }
+
+  const deniedTick = guardPanel(req);
+  if (deniedTick) return deniedTick;
 
   if (body.action === 'run_now') {
     if (!body.scheduleId) return NextResponse.json({ error: 'scheduleId requerido' }, { status: 400 });

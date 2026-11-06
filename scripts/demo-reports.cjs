@@ -1,6 +1,6 @@
 // Demo correcta: claim asigna workerId → reporte firmado se aplica (POSTED/FAILED reales)
 const crypto = require('crypto');
-const BASE = 'http://localhost:3000';
+const BASE = process.env.TEST_BASE ?? 'http://localhost:3000';
 const CAMP2 = process.argv[2];
 const j = async (m, p, b, h = {}) => { const r = await fetch(BASE + p, { method: m, headers: { 'Content-Type': 'application/json', ...h }, body: b ? JSON.stringify(b) : undefined }); return { status: r.status, data: await r.json().catch(() => ({})) }; };
 (async () => {

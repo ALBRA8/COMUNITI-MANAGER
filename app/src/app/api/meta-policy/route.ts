@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { guardPanel } from '@/lib/panel-auth';
 import {
   ensurePolicySourcesSeeded, runDueChecks, checkSource, registerManualReview,
   authorize, policyState, buildReport, POLICY_SETTINGS, networkCapsTable,
@@ -28,7 +29,7 @@ export async function GET(req: NextRequest) {
   const [state, sources, changes, incidents, recentChecks] = await Promise.all([
     policyState(),
     db.metaPolicySource.findMany({ orderBy: [{ priority: 'asc' }, { key: 'asc' }] }),
-    db.metaPolicyChange.findMany({ include: { source: { select: { key: true, name: true, url: true, product: true } } }, orderBy: { detectedAt: 'desc' }, take: 100 }),
+    db.metaPolicyChange.findMany({ include: { source: { select: { key: true, name: true, url: true, product: true, alsoCovers: true } } }, orderBy: { detectedAt: 'desc' }, take: 100 }),
     db.metaPolicyIncident.findMany({ orderBy: { createdAt: 'desc' }, take: 50 }),
     db.metaPolicyCheckRun.findMany({ include: { source: { select: { key: true, name: true } } }, orderBy: { createdAt: 'desc' }, take: 60 }),
   ]);
@@ -51,6 +52,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const denied = guardPanel(req);
+  if (denied) return denied;
   const body = await req.json().catch(() => ({}));
   const action = String(body.action ?? '');
 

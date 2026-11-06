@@ -70,8 +70,8 @@ L3 exige techos configurados; sin techos, el sistema degrada a L2.
 │  Panel UI (sección "Grupos de Facebook")                                   │
 │  API: /api/fb-workers · /api/fb-groups · /api/fb-campaigns ·               │
 │       /api/fb-jobs/claim · /api/fb-jobs/report                             │
-│  Prisma: FbWorker · FbGroup · FbCollection · FbCampaign · FbJob ·          │
-│          FbGroupHealth                                                     │
+│  Prisma: FbWorker · FbGroup · FbCampaign · FbJob · FbJoinTask ·            │
+│          FbDailyUsage · FbAlert · FbMedia (colecciones = string en FbGroup)│
 │  Ciclo 12 fases: PUBLICAR extiende su paso de distribución a FB-GROUPS     │
 └───────────────▲───────────────────────────────────┬────────────────────────┘
                 │ pull jobs (HMAC GET /claim,       │ push reportes
@@ -94,17 +94,23 @@ con expiración para que ningún job se publique dos veces.
 
 ## 6. Motor anti-ban v1 (postura balanceada)
 
-1. **Techo diario con warmup**: 5/día → 10/día → 20/día (semana 1→2→3+),
-   configurable por cuenta. Contador por cuenta, no por campaña.
+1. **Techo diario con warmup**: 5/día → 10/día → 20/día (días 0-6 → 7-13 →
+   14+ de antigüedad de la cuenta; el código aplica exactamente estos cortes).
+   Contador por cuenta, no por campaña; los posts EN VUELO (lease sin reporte)
+   también cuentan contra el techo.
 2. **Ritmo humano**: pausa aleatoria 3–10 min entre grupos de una sesión;
    tecleo con jitter de teclas y micro-pausas; un grupo a la vez.
 3. **Corte nocturno** 22:00–07:00 (hora local de la cuenta), salvo forzado
-   explícito con auditoría.
+   explícito con auditoría: campo `nightOverride` de la campaña, decidido al
+   crearla y registrado en la auditoría de creación; el claim lo respeta.
 4. **Variante única por grupo**: spintax determinista (semilla job+grupo) y/o
    reescritura IA según nivel (§4). Nunca el mismo texto dos veces.
 5. **Escudo de detección**: cualquier advertencia, checkpoint, "action blocked"
    o grupo que rechaza → pausa de la cuenta 12 h + alerta en panel; el grupo
-   problemático baja su health score y sale de la rotación hasta revisión.
+   problemático sale de la rotación hasta revisión. NOTA de auditoría
+   (06/11/2026): el health score numérico por grupo NO está implementado aún;
+   la exclusión es siempre decisión humana auditada (un FAILED nunca
+   re-incluye un grupo excluido). El score queda en backlog.
 6. **Fatiga**: si la cuenta acumula N días intensos, día de descanso sugerido
    en el panel (no forzado en v1).
 
@@ -118,16 +124,19 @@ Contratos nuevos del registro de herramientas del chaleco:
 - `fb_groups_sync` (riesgo MEDIO): importa/refresca lista de grupos.
 - `fb_groups_report` (riesgo BAJO): ingesta de resultados del worker.
 
-Reglas heredadas del chaleco: idempotencia por `x-request-id`, HMAC-SHA256
-en ambos sentidos con comparación en tiempo constante, append-only en
-auditoría, ningún dato inventado (si no hay URL de post, el job es FALLIDA
-con su motivo exacto).
+Reglas heredadas del chaleco: idempotencia real por leases con expiración
+(los reportes solo se aplican desde LEASED; un reintento duplicado se ignora
+con traza `*_REPORT_IGNORED` y no re-consume techos), HMAC-SHA256 en ambos
+sentidos con comparación en tiempo constante, append-only en auditoría,
+ningún dato inventado (si no hay URL de post, el job es FALLIDA con su motivo
+exacto; un POSTED sin URL se degrada a FAILED por honestidad).
 
 ## 8. Panel (sección nueva "Grupos de Facebook")
 
 1. **Workers**: alta por URL+secreto, badge de estado, modo PC/VPS, última visita.
-2. **Grupos**: tabla importada con colecciones/tags, health score por grupo
-   (éxitos/fallos recientes), excluir de rotación.
+2. **Grupos**: tabla importada con colecciones/tags y exclusión de rotación
+   (el health score numérico por grupo queda en backlog; el último posteo sí
+   se muestra).
 3. **Campañas**: origen = borrador del calendario (o texto libre), targets =
    colecciones/grupos, modo (perfil/Página/en-grupo), primer comentario,
    motor (dom/internal), ventana horaria. Progreso en vivo y resultado por
@@ -177,7 +186,8 @@ con su motivo exacto).
 - **P2** Chaleco: modelos Prisma, rutas claim/report/workers/groups/campaigns,
   sección de panel, auditoría e idempotencia. *(hecho)*
 - **P3** IA graduada (reescritura L2/L3), primer comentario, modo Página-en-grupo,
-  muro personal, health scores. *(hecho)*
+  muro personal. *(hecho)* Los health scores numéricos por grupo NO llegaron a
+  implementarse (corrección honesta de auditoría 06/11/2026; en backlog).
 - **P4** Verificación E2E + build de producción + README + push. *(hecho)*
 - **P5** Adjuntos de imagen (hasta 4 por post): URL http(s) o ruta local del
   worker; fallo honesto ADJUNTO_FALLIDO si el compositor no colabora. *(hecho)*

@@ -25,7 +25,7 @@ const NET_EMOJI: Record<string, string> = {
 export function CreationSection({ harness, brandId, refresh }: SectionProps) {
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [form, setForm] = useState({ objective: '', theme: '', network: 'instagram', adaptTo: [] as string[] });
-  const [editing, setEditing] = useState<Record<string, string>>({});
+  const [editing, setEditing] = useState<Record<string, string | undefined>>({});
   const [note, setNote] = useState('');
 
   useEffect(() => {
@@ -45,16 +45,28 @@ export function CreationSection({ harness, brandId, refresh }: SectionProps) {
     setDrafts(await res.json());
   }, [brandId]);
 
+  const [creating, setCreating] = useState(false);
   const create = async () => {
-    if (!form.objective) return;
-    const res = await fetch('/api/drafts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ brandId, ...form }) });
-    const data = await res.json();
-    const blocked = data.adapted?.some((a: { validation: { ok: boolean } }) => !a.validation.ok);
-    setNote(blocked
-      ? 'Borrador creado. Algunas adaptaciones tienen incidencias de validación (vocabulario prohibido, longitud o precios no autorizados).'
-      : 'Borrador creado y validado contra la memoria de marca.');
-    setForm({ objective: '', theme: '', network: 'instagram', adaptTo: [] });
-    load();
+    if (!form.objective || creating) return;
+    setCreating(true);
+    try {
+      const res = await fetch('/api/drafts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ brandId, ...form }) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setNote(data.error ?? 'No se pudo crear el borrador (intenta de nuevo).');
+        return;
+      }
+      const blocked = data.adapted?.some((a: { validation: { ok: boolean } }) => !a.validation.ok);
+      setNote(blocked
+        ? 'Borrador creado. Algunas adaptaciones tienen incidencias de validación (vocabulario prohibido, longitud o precios no autorizados).'
+        : 'Borrador creado y validado contra la memoria de marca.');
+      setForm({ objective: '', theme: '', network: 'instagram', adaptTo: [] });
+      load();
+    } catch (e) {
+      setNote(`Fallo de red creando el borrador: ${(e as Error).message}`);
+    } finally {
+      setCreating(false);
+    }
   };
 
   const saveVersion = async (versionId: string) => {

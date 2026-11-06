@@ -119,7 +119,7 @@ const PRODUCT_FILTERS = [
 
 function matchesProduct(s: PolicySource, filter: string): boolean {
   if (!filter) return true;
-  return s.product === filter || s.alsoCovers.split(',').map((x) => x.trim()).includes(filter);
+  return s.product === filter || (s.alsoCovers ?? '').split(',').map((x) => x.trim()).includes(filter);
 }
 
 function fmtDate(iso: string | null): string {
@@ -190,6 +190,9 @@ export function MetaComplianceSection() {
       const json = await res.json().catch(() => ({}));
       if (!res.ok && json.error) alert(`El panel respondió: ${json.error}`);
       return json;
+    } catch (e) {
+      alert(`Fallo de red contactando al motor: ${(e as Error).message}`);
+      return null;
     } finally {
       setBusy('');
       load();
@@ -200,6 +203,7 @@ export function MetaComplianceSection() {
     setBusy(`report-${kind}`);
     try {
       const res = await fetch(`/api/meta-policy?report=${kind}`, { cache: 'no-store' });
+      if (!res.ok) { setReport(null); return; }
       const json: PolicyReportData = await res.json();
       setReport(json.report);
     } finally {

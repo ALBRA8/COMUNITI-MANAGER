@@ -60,8 +60,8 @@ export function ResearchSection({ harness, brandId, refresh }: SectionProps) {
                 <Badge variant={result.outcome === 'OK' ? 'secondary' : 'outline'}>
                   {result.dataState === 'VERIFICADO' ? 'Verificado' : result.dataState === 'PENDIENTE_CREDENCIALES' ? 'Pendiente de credenciales' : 'Error'}
                 </Badge>
-                {result.reason && <p className="text-muted-foreground">{result.reason}</p>}
-                {result.data && <pre className="bg-muted rounded-md p-2 overflow-x-auto max-h-48 text-[10px]">{JSON.stringify(result.data, null, 2)}</pre>}
+                {result.reason ? <p className="text-muted-foreground">{String(result.reason)}</p> : null}
+                {result.data ? <pre className="bg-muted rounded-md p-2 overflow-x-auto max-h-48 text-[10px]">{JSON.stringify(result.data, null, 2)}</pre> : null}
               </CardContent>
             </Card>
           )}
@@ -134,8 +134,8 @@ export function CompetitorsSection({ harness, brandId, refresh }: SectionProps) 
             <Badge variant={result.outcome === 'OK' ? 'secondary' : 'outline'}>
               {result.dataState === 'VERIFICADO' ? 'Verificado' : result.dataState === 'PENDIENTE_CREDENCIALES' ? 'Pendiente de credenciales' : 'Error'}
             </Badge>
-            {result.reason && <p className="text-muted-foreground">{result.reason}</p>}
-            {result.data && <pre className="bg-muted rounded-md p-2 overflow-x-auto max-h-64 text-[10px]">{JSON.stringify(result.data, null, 2)}</pre>}
+            {result.reason ? <p className="text-muted-foreground">{String(result.reason)}</p> : null}
+            {result.data ? <pre className="bg-muted rounded-md p-2 overflow-x-auto max-h-64 text-[10px]">{JSON.stringify(result.data, null, 2)}</pre> : null}
           </CardContent>
         </Card>
       )}

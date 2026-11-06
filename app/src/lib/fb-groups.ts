@@ -12,7 +12,10 @@ import { authorize } from '@/lib/meta-policy';
  * Meta lo impide (apagado de emergencia, cambio crítico sin analizar o
  * documentación desactualizada). Última línea de defensa antes del vuelo. */
 async function policyHold(operation: 'FB_GROUP_POST' | 'FB_JOIN_GROUP'): Promise<string | null> {
-  const res = await authorize({ operation, actor: 'system:worker-claim' });
+  // silent: el poll del worker no debe escribir una fila de auditoría por
+  // latido (F-DATA-16); la auditoría del ciclo la dejan FB_JOB_LEASED y la
+  // creación/aprobación de campañas, que sí auditan su veredicto.
+  const res = await authorize({ operation, actor: 'system:worker-claim', silent: true });
   if (res.verdict === 'BLOQUEADO' || res.verdict === 'POLITICA_DESACTUALIZADA') {
     return `POLICY_HOLD (${res.verdict}): ${res.reasons[0] ?? 'el motor de cumplimiento impide la operación'}`;
   }
@@ -66,7 +69,10 @@ export function todayKey(tz = 'America/Bogota'): string {
 }
 
 export function hourInTz(tz = 'America/Bogota'): number {
-  return Number(new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', hour12: false }).format(new Date()));
+  // hourCycle h23 + guard "24": algunos ICU devuelven "24" a medianoche y eso
+  // desalinearía la ventana horaria justo en el corte nocturno.
+  const formatted = new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', hour12: false, hourCycle: 'h23' }).format(new Date());
+  return Number(formatted === '24' ? '00' : formatted);
 }
 
 /** Ventana de publicación: windowStart..windowEnd hora local (FICHA §6.3). */
@@ -215,6 +221,20 @@ export async function claimJobsForWorker(
   const day = todayKey();
   const cap = computeCap(worker.sessionAgeDays);
 
+  // Reaper de leases vencidos (FICHA §5): "si el worker muere, el job vuelve a
+  // QUEUED"; al tercer intento sin reporte, fallo honesto con su motivo.
+  const expiredJobs = await db.fbJob.findMany({ where: { status: 'LEASED', leaseUntil: { lt: new Date() } }, select: { id: true, attempts: true, targetName: true } });
+  for (const ej of expiredJobs) {
+    const fatal = ej.attempts >= 3;
+    await db.fbJob.update({
+      where: { id: ej.id },
+      data: fatal
+        ? { status: 'FAILED', failReason: 'Lease vencido 3 veces sin reporte del worker', leaseUntil: null }
+        : { status: 'QUEUED', leaseUntil: null },
+    });
+    await audit('FB_JOB_LEASE_EXPIRED', 'FB_JOB', ej.id, fatal ? `Job de "${ej.targetName}" falló: lease vencido 3 veces sin reporte` : `Lease vencido de "${ej.targetName}" reencolado (el worker no reportó a tiempo)`);
+  }
+
   const usage = await db.fbDailyUsage.upsert({
     where: { workerId_day: { workerId: worker.id, day } },
     create: { workerId: worker.id, day, posts: 0, cap },
@@ -229,7 +249,11 @@ export async function claimJobsForWorker(
     return { jobs: [], cap, usedToday: usage.posts, pausedUntil: activeAlert.pausedUntil, pausedKind: activeAlert.kind, note: `PAUSED_ANTI_BAN: ${activeAlert.message}` };
   }
 
-  const remaining = Math.max(0, cap - usage.posts);
+  // El techo cuenta también los posts EN VUELO (leases sin reporte): dos
+  // claims concurrentes no pueden superar el cap aunque el incremento del
+  // contador ocurre al reportar (F-DATA-09).
+  const inFlight = await db.fbJob.count({ where: { workerId: worker.id, status: 'LEASED' } });
+  const remaining = Math.max(0, cap - usage.posts - inFlight);
   if (remaining === 0) {
     return { jobs: [], cap, usedToday: usage.posts, pausedUntil: null, note: 'Techo diario alcanzado (warmup)' };
   }
@@ -243,9 +267,16 @@ export async function claimJobsForWorker(
   if (inWindowCampaigns.length === 0 && campaigns.length > 0) {
     return { jobs: [], cap, usedToday: usage.posts, pausedUntil: null, note: `Fuera de ventana horaria (hora local ${hour})` };
   }
+  // Corte nocturno 22:00-07:00 (FICHA §6.3): solo vuela una campaña creada
+  // explícitamente con nightOverride (forzado visible y auditado al crear).
+  const isNight = hour >= 22 || hour < 7;
+  const flyable = isNight ? inWindowCampaigns.filter((c) => c.nightOverride) : inWindowCampaigns;
+  if (isNight && inWindowCampaigns.length > 0 && flyable.length === 0) {
+    return { jobs: [], cap, usedToday: usage.posts, pausedUntil: null, note: `Corte nocturno 22:00-07:00 (hora local ${hour}): las campañas en ventana no llevan nightOverride` };
+  }
 
   const leases: ClaimableJob[] = [];
-  for (const campaign of inWindowCampaigns) {
+  for (const campaign of flyable) {
     if (leases.length >= Math.min(capacity, remaining)) break;
     const brandCtx = await brandContextFor(campaign.brandId);
     const autonomy = await getAutonomy();
@@ -261,6 +292,17 @@ export async function claimJobsForWorker(
     });
     for (const job of candidates) {
       if (job.targetKind === 'group' && !job.group) continue;
+      const until = new Date(Date.now() + 10 * 60 * 1000);
+      // Reclamo ATÓMICO (F-DATA-01): la transición QUEUED→LEASED solo ocurre si
+      // el job sigue QUEUED (updateMany condicional + count). Entre la lectura
+      // y aquí puede pasar la IA de otro claim: quien pierde, no entrega.
+      const claimed = await db.fbJob.updateMany({
+        where: { id: job.id, status: 'QUEUED' },
+        data: { status: 'LEASED', leaseUntil: until, attempts: { increment: 1 }, workerId: worker.id },
+      });
+      if (claimed.count === 0) continue; // otro worker lo ganó
+      // La variante se genera DESPUÉS de ganar el lease (la ventana de carrera
+      // ya está cerrada); el job queda LEASED aunque la IA tarde 25 s.
       const variant = await generateVariant(campaign.text, `${job.id}::${job.targetName}`, autonomy, brandCtx, campaign.boldStyle);
       // Adjuntos del job: copia de la campaña; con mediaMode=rotate, una imagen
       // distinta por grupo (rotación determinista por job, roadmap #3).
@@ -270,10 +312,9 @@ export async function claimJobsForWorker(
         const picked = pickRotatedMedia(mediaUrls, job.id);
         mediaUrls = picked ? [picked] : [];
       }
-      const until = new Date(Date.now() + 10 * 60 * 1000);
       const updated = await db.fbJob.update({
         where: { id: job.id },
-        data: { status: 'LEASED', leaseUntil: until, attempts: { increment: 1 }, workerId: worker.id, variant: variant.text, variantSource: variant.source },
+        data: { variant: variant.text, variantSource: variant.source },
       });
       await db.fbCampaign.update({ where: { id: campaign.id }, data: { status: 'RUNNING' } });
       await audit('FB_JOB_LEASED', 'FB_JOB', updated.id, `Worker reclama job para "${updated.targetName}" (variante ${updated.variantSource})`);
@@ -367,7 +408,9 @@ export async function claimJoinTaskForWorker(
     });
   }
 
-  if (usage.joins >= joinCap) {
+  // El techo cuenta también las uniones EN VUELO (leases sin reporte aún).
+  const joinsInFlight = await db.fbJoinTask.count({ where: { workerId: worker.id, status: 'LEASED' } });
+  if (usage.joins + joinsInFlight >= joinCap) {
     return { task: null, joinCap, joinsToday: usage.joins, pausedUntil: null, note: 'Techo diario de uniones alcanzado (warmup)' };
   }
 
@@ -378,10 +421,14 @@ export async function claimJoinTaskForWorker(
   if (!candidate) return { task: null, joinCap, joinsToday: usage.joins, pausedUntil: null };
 
   const until = new Date(Date.now() + 15 * 60 * 1000);
-  const updated = await db.fbJoinTask.update({
-    where: { id: candidate.id },
+  // Reclamo ATÓMICO (F-DATA-04): misma protección que los jobs de publicación.
+  const claimedJoin = await db.fbJoinTask.updateMany({
+    where: { id: candidate.id, status: 'PENDING' },
     data: { status: 'LEASED', leaseUntil: until, attempts: { increment: 1 }, workerId: worker.id },
   });
+  if (claimedJoin.count === 0) return { task: null, joinCap, joinsToday: usage.joins, pausedUntil: null };
+  const updated = await db.fbJoinTask.findUnique({ where: { id: candidate.id } });
+  if (!updated) return { task: null, joinCap, joinsToday: usage.joins, pausedUntil: null };
   await audit('FB_JOIN_LEASED', 'FB_JOIN_TASK', updated.id, `Worker reclama unión a ${updated.url}${updated.keyword ? ` (keyword: ${updated.keyword})` : ''}`);
   return { task: { id: updated.id, url: updated.url, fbId: updated.fbId, keyword: updated.keyword }, joinCap, joinsToday: usage.joins, pausedUntil: null };
 }
@@ -407,18 +454,28 @@ export async function applyJoinReport(
   let joined = 0;
   let groupsCreated = 0;
   for (const r of reports) {
-    const task = await db.fbJoinTask.findFirst({ where: { id: String(r.taskId), workerId } });
-    if (!task) continue;
     const status = ['JOINED', 'REQUESTED', 'SKIPPED', 'FAILED'].includes(r.status) ? r.status : 'FAILED';
-    const updated = await db.fbJoinTask.update({
-      where: { id: task.id },
+    // Guard de transición (F-DATA-02 aplicado a joins): solo una tarea LEASED
+    // acepta reporte; los reintentos duplicados del worker no re-consumen el
+    // techo ni duplican la auditoría.
+    const updatedTask = await db.fbJoinTask.updateMany({
+      where: { id: String(r.taskId), workerId, status: 'LEASED' },
       data: {
         status,
         failReason: r.failReason ?? '',
-        joinedAt: status === 'JOINED' ? new Date() : task.joinedAt,
+        joinedAt: status === 'JOINED' ? new Date() : undefined,
         leaseUntil: null,
       },
     });
+    if (updatedTask.count === 0) {
+      const existing = await db.fbJoinTask.findFirst({ where: { id: String(r.taskId), workerId }, select: { id: true, status: true, url: true } });
+      if (existing) {
+        await audit('FB_JOIN_REPORT_IGNORED', 'FB_JOIN_TASK', existing.id, `Reporte ${r.status} ignorado: tarea en "${existing.status}" (fuera de lease)`);
+      }
+      continue;
+    }
+    const updated = await db.fbJoinTask.findUnique({ where: { id: String(r.taskId) } });
+    if (!updated) continue;
     applied += 1;
     if (status !== 'SKIPPED') {
       const day = todayKey();
@@ -478,19 +535,38 @@ export async function applyWorkerReport(
 ): Promise<{ applied: number; done: number }> {
   let applied = 0;
   for (const r of results) {
-    const job = await db.fbJob.findFirst({ where: { id: String(r.jobId), workerId } });
-    if (!job) continue;
-    const status = ['POSTED', 'FAILED', 'PENDING_REVIEW', 'SKIPPED'].includes(r.status) ? r.status : 'FAILED';
-    const updated = await db.fbJob.update({
-      where: { id: job.id },
+    let status = ['POSTED', 'FAILED', 'PENDING_REVIEW', 'SKIPPED'].includes(r.status) ? r.status : 'FAILED';
+    let postUrl = (r.postUrl ?? '').trim();
+    let failReason = r.failReason ?? '';
+    // Honestidad FICHA §7: sin URL viva no hay éxito. Un POSTED sin URL se
+    // degrada a FAILED con su motivo exacto.
+    if (status === 'POSTED' && !postUrl) {
+      status = 'FAILED';
+      failReason = 'POSTED sin URL: rechazado por honestidad (FICHA §7: sin URL viva no hay éxito)';
+      postUrl = '';
+    }
+    // Guard de transición (F-DATA-02): solo un job LEASED acepta reporte.
+    // Un reintento duplicado (timeout de red) ya NO re-consume el techo diario
+    // ni sobrescribe el estado terminal de un job publicado.
+    const claimedReport = await db.fbJob.updateMany({
+      where: { id: String(r.jobId), workerId, status: 'LEASED' },
       data: {
         status,
-        postUrl: r.postUrl ?? '',
-        failReason: r.failReason ?? '',
-        postedAt: status === 'POSTED' ? new Date() : job.postedAt,
+        postUrl,
+        failReason,
+        postedAt: status === 'POSTED' ? new Date() : undefined,
         leaseUntil: null,
       },
     });
+    if (claimedReport.count === 0) {
+      const existing = await db.fbJob.findFirst({ where: { id: String(r.jobId), workerId }, select: { id: true, status: true, targetName: true } });
+      if (existing) {
+        await audit('FB_JOB_REPORT_IGNORED', 'FB_JOB', existing.id, `Reporte ${r.status} ignorado: job en "${existing.status}" (fuera de lease; reintento o cancelación previa)`);
+      }
+      continue;
+    }
+    const updated = await db.fbJob.findUnique({ where: { id: String(r.jobId) } });
+    if (!updated) continue;
     applied += 1;
     if (status === 'POSTED') {
       const day = todayKey();
@@ -499,15 +575,15 @@ export async function applyWorkerReport(
         create: { workerId, day, posts: 1, cap: 5 },
         update: { posts: { increment: 1 } },
       });
-      if (job.groupId) {
-        await db.fbGroup.update({ where: { id: job.groupId }, data: { lastPostedAt: new Date() } });
+      if (updated.groupId) {
+        await db.fbGroup.update({ where: { id: updated.groupId }, data: { lastPostedAt: new Date() } });
       }
       await audit('FB_JOB_POSTED', 'FB_JOB', updated.id, `Publicado en "${updated.targetName}"${updated.postUrl ? ` · ${updated.postUrl}` : ''} · uso diario ${usage.posts}`);
     } else {
-      if (job.groupId && status === 'FAILED') {
-        await db.fbGroup.update({ where: { id: job.groupId }, data: { excluded: false } }).catch(() => undefined);
-      }
-      await audit(`FB_JOB_${status}`, 'FB_JOB', updated.id, `Job para "${updated.targetName}": ${r.failReason ?? status}`);
+      // NOTA: el reporte FAILED ya no toca `excluded` del grupo (F-DATA-06):
+      // la exclusión de rotación es decisión humana auditada; el fallo de un
+      // job nunca re-incluye un grupo excluido ni modifica la rotación.
+      await audit(`FB_JOB_${status}`, 'FB_JOB', updated.id, `Job para "${updated.targetName}": ${failReason || status}`);
     }
   }
 
@@ -521,8 +597,9 @@ export async function applyWorkerReport(
   for (const c of campaigns) {
     const pending = await db.fbJob.count({ where: { campaignId: c.id, status: { in: ['QUEUED', 'LEASED'] } } });
     if (pending === 0) {
+      const review = await db.fbJob.count({ where: { campaignId: c.id, status: 'PENDING_REVIEW' } });
       await db.fbCampaign.update({ where: { id: c.id }, data: { status: 'DONE' } });
-      await audit('FB_CAMPAIGN_DONE', 'FB_CAMPAIGN', c.id, `Campaña "${c.name}" terminada`);
+      await audit('FB_CAMPAIGN_DONE', 'FB_CAMPAIGN', c.id, `Campaña "${c.name}" terminada${review > 0 ? ` (${review} job(s) quedaron PENDING_REVIEW: publicados y a espera de aprobación del admin del grupo)` : ''}`);
       done += 1;
     }
   }

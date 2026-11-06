@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { guardPanel } from '@/lib/panel-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,6 +23,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const denied = guardPanel(req);
+  if (denied) return denied;
   const body = await req.json().catch(() => ({}));
   const url = String(body.url ?? '').trim();
   if (!url) return NextResponse.json({ error: 'url requerida' }, { status: 400 });
@@ -41,6 +44,8 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  const denied = guardPanel(req);
+  if (denied) return denied;
   const id = req.nextUrl.searchParams.get('id');
   if (!id) return NextResponse.json({ error: 'id requerido' }, { status: 400 });
   const item = await db.fbMedia.delete({ where: { id } }).catch(() => null);

@@ -1,16 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { verifyWebhookSignature } from '@/lib/webhook-security';
+import { verifyWebhookSignature, isLoopbackRequest } from '@/lib/webhook-security';
 
 export const dynamic = 'force-dynamic';
 
 // Webhooks entrantes: CRM, Leads, Chismoso, Postgale, WhatsPower.
 // Seguridad: si HARNESS_WEBHOOK_SECRET está configurado se exige firma
 // HMAC-SHA256 (x-harness-signature: sha256=<hex> del cuerpo crudo) o Bearer.
+// Fail-closed (F-SEC-03/F-OPS-08): sin secreto configurado, SOLO se aceptan
+// peticiones locales (loopback); desde fuera de la máquina → 503.
+
+const ALLOWED_SOURCES = ['leads', 'chismoso', 'crm', 'postgale', 'whatspower'];
+
 export async function POST(req: NextRequest, { params }: { params: Promise<{ source: string }> }) {
   const { source } = await params;
+  if (!ALLOWED_SOURCES.includes(source)) {
+    return NextResponse.json({ error: `Fuente no soportada (válidas: ${ALLOWED_SOURCES.join(', ')})` }, { status: 404 });
+  }
   const raw = await req.text();
   const secret = process.env.HARNESS_WEBHOOK_SECRET;
+
+  if (!secret && !isLoopbackRequest(req.headers)) {
+    await db.errorLog.create({
+      data: { source: `webhook:${source}`, severity: 'WARNING', message: 'Webhook remoto rechazado: HARNESS_WEBHOOK_SECRET no está configurado (fail-closed)', detailJson: raw.slice(0, 500) },
+    }).catch(() => undefined);
+    return NextResponse.json({ error: 'Ingesta remota deshabilitada: configura HARNESS_WEBHOOK_SECRET' }, { status: 503 });
+  }
 
   const check = verifyWebhookSignature(raw, {
     'x-harness-signature': req.headers.get('x-harness-signature'),

@@ -3,12 +3,15 @@ import { db } from '@/lib/db';
 import { createTask, runTask } from '@/lib/orchestrator';
 import { executeContract } from '@/lib/executor';
 import { NETWORKS, type Network } from '@/lib/contracts';
+import { guardPanel } from '@/lib/panel-auth';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 // Investigación de mercado: guarda evidencias reales o declara sin evidencia
 export async function POST(req: NextRequest) {
+  const denied = guardPanel(req);
+  if (denied) return denied;
   const body = await req.json().catch(() => ({}));
   const { brandId, topic, competitorHandle, network } = body;
   if (!brandId || (!topic && !competitorHandle)) {

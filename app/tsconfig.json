@@ -37,6 +37,14 @@
     ".next/dev/types/**/*.ts"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    "investigacion",
+    "clonakit-extracted",
+    "clones",
+    "agente",
+    "examples",
+    "skills",
+    "mini-services",
+    "research_10b"
   ]
 }

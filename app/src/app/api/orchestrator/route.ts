@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { runFullCycle, resumeCycle } from '@/lib/cycle';
+import { guardPanel } from '@/lib/panel-auth';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 // Ejecutar ciclo completo o retomarlo tras una aprobación
 export async function POST(req: NextRequest) {
+  const denied = guardPanel(req);
+  if (denied) return denied;
   const body = await req.json().catch(() => ({}));
   const { brandId, topic, objective, networks, draftId, resume } = body;
   if (!brandId) return NextResponse.json({ error: 'brandId requerido' }, { status: 400 });

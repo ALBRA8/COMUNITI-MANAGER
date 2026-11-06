@@ -72,6 +72,11 @@ async function j(method, path, body, headers = {}) {
   // ── CASO 5: comparación entre versiones (historial conservado) ──
   console.log('5) Comparación entre versiones');
   check('cambio vincula versión anterior y nueva', !!changeMod?.fromVersionId && !!changeMod?.toVersionId && changeMod.fromVersionId !== changeMod.toVersionId);
+  // Contrato del panel (F-UX-02): la fuente del cambio debe traer alsoCovers;
+  // sin ese campo el filtro de producto del Centro de Cumplimiento crashea.
+  const apiState = await j('GET', '/api/meta-policy');
+  const chgWithSource = apiState.data.changes.find((c) => c.source?.key === sNew.key);
+  check('API de cambios incluye alsoCovers de la fuente (contrato del panel)', !!chgWithSource && typeof chgWithSource.source.alsoCovers === 'string', JSON.stringify(chgWithSource?.source ?? null).slice(0, 120));
   const versions = await prisma.metaPolicyVersion.findMany({ where: { sourceId: sNew.id }, orderBy: { versionNumber: 'asc' } });
   check('historial v1 y v2 coexisten sin sobrescritura', versions.length >= 2 && versions[0].contentHash !== versions[1].contentHash);
 
@@ -134,6 +139,7 @@ async function j(method, path, body, headers = {}) {
 
   // ── CASO 8: solicitud de aprobación humana (HITL) ──
   console.log('8) Solicitud de aprobación humana');
+  const prevAutonomy = (await prisma.setting.findUnique({ where: { key: 'autonomy_mode' } }))?.value ?? null;
   await prisma.setting.upsert({ where: { key: 'autonomy_mode' }, create: { key: 'autonomy_mode', value: 'L1_ASSISTED' }, update: { value: 'L1_ASSISTED' } });
   const g8 = await prisma.fbGroup.create({ data: { fbId: `mp-test-grupo-${stamp}`, name: 'MP-TEST grupo', collection: 'test' } });
   const r8 = await j('POST', '/api/fb-campaigns', { name: `MP-TEST ${stamp}`, text: 'Texto de prueba de cumplimiento {uno|dos}', targets: [g8.id], approve: false });
@@ -209,7 +215,7 @@ async function j(method, path, body, headers = {}) {
   console.log('Flujo completo: borrador → aprobación con motor activo → cola');
   const approve10 = await j('PATCH', '/api/fb-campaigns', { campaignId: camp8Id, action: 'approve' });
   check('aprobación HITL con motor operativo → jobs en cola', approve10.status === 200 && approve10.data.approved >= 1, JSON.stringify(approve10.data).slice(0, 160));
-  await prisma.fbCampaign.update({ where: { id: camp8Id }, data: { windowStart: 0, windowEnd: 24 } });
+  await prisma.fbCampaign.update({ where: { id: camp8Id }, data: { windowStart: 0, windowEnd: 24, nightOverride: true } });
   const claimOk = await signedClaim({ workerId, capacity: 5 });
   check('worker reclama el job aprobado dentro de ventana (entre la cola existente)', (claimOk.data.jobs ?? []).some((jj) => jj.campaignId === camp8Id), JSON.stringify(claimOk.data).slice(0, 160));
 
@@ -258,5 +264,11 @@ async function j(method, path, body, headers = {}) {
 
   await prisma.$disconnect();
   console.log(`\nResultado: ${pass} ✓ / ${fail} ✗`);
+  
+  // Higiene (F-OPS-09): restaurar el modo de autonomía global previo al test.
+  if (typeof prevAutonomy !== 'undefined') {
+    if (prevAutonomy === null) await prisma.setting.delete({ where: { key: 'autonomy_mode' } }).catch(() => undefined);
+    else await prisma.setting.upsert({ where: { key: 'autonomy_mode' }, create: { key: 'autonomy_mode', value: prevAutonomy }, update: { value: prevAutonomy } });
+  }
   process.exit(fail === 0 ? 0 : 1);
 })().catch((e) => { console.error('Error fatal:', e); process.exit(1); });

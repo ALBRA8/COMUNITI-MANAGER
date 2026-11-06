@@ -256,7 +256,7 @@ export function AutomationsSection({ harness, brandId, refresh }: SectionProps) 
       )}
 
       {schedules !== null && brandId && schedules.length === 0 && (
-        <p className="text-xs text-muted-foreground mb-4">Sin programaciones aún para esta vista. Crea una arriba: el arnés disparará el ciclo solo a la hora indicada.</p>
+        <p className="text-xs text-muted-foreground mb-4">Sin programaciones aún en todo el arnés (se crean por marca). Crea una arriba: el arnés disparará el ciclo solo a la hora indicada.</p>
       )}
 
       <div className="grid gap-3 md:grid-cols-2">

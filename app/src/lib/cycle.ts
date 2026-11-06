@@ -79,7 +79,7 @@ function summarize(phase: CyclePhase, status: string, output: Record<string, unk
   switch (phase) {
     case 'RESEARCH': return output.dataState === 'PENDIENTE_CREDENCIALES' ? 'Sin herramienta de investigación conectada (honesto)' : `Hallazgos: ${JSON.stringify(output.findings ?? 'sin evidencia').slice(0, 120)}`;
     case 'CREATE': return `Borrador ${output.draftId} validación: ${output.status}`;
-    case 'VALIDATE': return `Veredicto del supervisor: ${output.verdict}${(output.issues as string[])?.length ? ` (${output.issues.length} incidencias)` : ''}`;
+    case 'VALIDATE': { const issues = output.issues as string[] | undefined; return `Veredicto del supervisor: ${output.verdict}${issues?.length ? ` (${issues.length} incidencias)` : ''}`; }
     case 'APPROVE': return output.status === 'WAITING_APPROVAL' ? 'En cola de aprobaciones' : String(output.status ?? '');
     case 'PUBLISH': return `${(output.publications as unknown[])?.length ?? 0} publicación(es) procesadas`;
     case 'VERIFY': return `${output.verified ?? 0} publicaciones verificadas`;

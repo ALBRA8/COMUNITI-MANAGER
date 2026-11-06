@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { loadBrandMemory, classifyByRules, canAutoReply, findFaqAnswer } from '@/lib/brand-memory';
 import { getAutonomyMode } from '@/lib/orchestrator';
+import { guardPanel } from '@/lib/panel-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,6 +19,8 @@ export async function GET(req: NextRequest) {
 
 // Añadir interacción (manual o webhook previo) y clasificarla
 export async function POST(req: NextRequest) {
+  const denied = guardPanel(req);
+  if (denied) return denied;
   const body = await req.json().catch(() => ({}));
   const { brandId, network, author, text, kind } = body;
   if (!brandId || !text) return NextResponse.json({ error: 'brandId y text requeridos' }, { status: 400 });
@@ -56,14 +59,17 @@ export async function POST(req: NextRequest) {
 
 // Responder o derivar
 export async function PATCH(req: NextRequest) {
+  const denied = guardPanel(req);
+  if (denied) return denied;
   const body = await req.json().catch(() => ({}));
   const { id, action, replyText } = body;
   const comment = await db.comment.findUnique({ where: { id } });
   if (!comment) return NextResponse.json({ error: 'Interacción no encontrada' }, { status: 404 });
 
-  const memory = await loadBrandMemory(comment.brandId)!;
+  const memory = await loadBrandMemory(comment.brandId);
+  if (!memory) return NextResponse.json({ error: 'Marca de la interacción no encontrada (¿fue borrada?)' }, { status: 404 });
   const mode = await getAutonomyMode();
-  const auto = canAutoReply(comment.classification, comment.risk, memory!, mode);
+  const auto = canAutoReply(comment.classification, comment.risk, memory, mode);
 
   if (action === 'reply') {
     // Firewall: en L1/L2 la respuesta externa requiere aprobación previa
@@ -81,14 +87,16 @@ export async function PATCH(req: NextRequest) {
       });
       return NextResponse.json({ ok: false, requiresApproval: true, approvalId: approval.id, reason: auto.reason });
     }
-    // Idempotencia: no responder dos veces
-    if (comment.status === 'REPLIED') {
-      return NextResponse.json({ ok: false, reason: 'Ya respondida (idempotencia anti-duplicado)' }, { status: 409 });
-    }
-    const updated = await db.comment.update({
-      where: { id },
+    // Idempotencia anti-duplicado ATÓMICA (F-DATA-26): la transición solo ocurre
+    // si la interacción no estaba ya respondida.
+    const replied = await db.comment.updateMany({
+      where: { id, status: { not: 'REPLIED' } },
       data: { status: 'REPLIED', replyText: replyText ?? comment.suggestedReply, repliedAt: new Date() },
     });
+    if (replied.count === 0) {
+      return NextResponse.json({ ok: false, reason: 'Ya respondida (idempotencia anti-duplicado)' }, { status: 409 });
+    }
+    const updated = await db.comment.findUnique({ where: { id } });
     await db.auditEntry.create({
       data: { actor: 'human', action: 'REPLY_COMMENT', targetType: 'Comment', targetId: id, allowed: true, reason: 'Respuesta enviada (simulada local: conector de red no configurado)' },
     });

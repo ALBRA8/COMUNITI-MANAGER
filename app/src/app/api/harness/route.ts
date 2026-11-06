@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { syncRegistry, computeStatus, TOOLS } from '@/lib/registry';
 import { AGENTS } from '@/lib/agents';
+import { guardPanel } from '@/lib/panel-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,6 +31,8 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const denied = guardPanel(req);
+  if (denied) return denied;
   const body = await req.json().catch(() => ({}));
   if (body.action === 'pause') {
     const { setPaused } = await import('@/lib/orchestrator');

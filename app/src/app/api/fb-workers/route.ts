@@ -4,6 +4,7 @@ import { db } from '@/lib/db';
 import { syncRegistry } from '@/lib/registry';
 import { maskProxy, isValidProxyUrl } from '@/lib/fb-risk';
 import { todayKey, computeCap, computeJoinCap } from '@/lib/fb-groups';
+import { guardPanel } from '@/lib/panel-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,6 +43,11 @@ export async function POST(req: NextRequest) {
   // El raw se lee UNA sola vez (el ping necesita el cuerpo exacto para verificar HMAC).
   const raw = await req.text();
   const body = JSON.parse(raw || '{}');
+  // F-SEC-01: register/delete/set_session_age son mutaciones de panel; el ping tiene su propia autenticación HMAC.
+  if (body.action !== 'ping') {
+  const denied = guardPanel(req);
+  if (denied) return denied;
+  }
 
   if (body.action === 'register') {
     if (!body.name || !body.baseUrl) return NextResponse.json({ error: 'name y baseUrl requeridos' }, { status: 400 });

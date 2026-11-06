@@ -37,6 +37,7 @@ async function text(path) {
   // 0) Autonomía L1: variante spintax determinista, sin espera de IA en el test
   const { PrismaClient } = require('@prisma/client');
   const prisma = new PrismaClient();
+  const prevAutonomy = (await prisma.setting.findUnique({ where: { key: 'autonomy_mode' } }))?.value ?? null;
   await prisma.setting.upsert({ where: { key: 'autonomy_mode' }, create: { key: 'autonomy_mode', value: 'L1_ASSISTED' }, update: { value: 'L1_ASSISTED' } });
   await prisma.$disconnect();
 
@@ -71,7 +72,7 @@ async function text(path) {
   // 3) Creación por defecto → DRAFT + jobs PENDING_APPROVAL (ventana 0-24: siempre en ventana, indep. de la hora — [start,end) excluye windowEnd)
   const camp = await j('POST', '/api/fb-campaigns', {
     name: `Gate P2 ${stamp}`, text: 'Texto del borrador P2 {hola|chau}.', mode: 'group',
-    windowStart: 0, windowEnd: 24, targets: [ga.id, gb.id],
+    windowStart: 0, windowEnd: 24, nightOverride: true, targets: [ga.id, gb.id],
   });
   check('POST sin approve nace DRAFT', camp.status === 200 && camp.data.campaign?.status === 'DRAFT', JSON.stringify(camp.data.campaign));
   check('DRAFT nace sin approvedAt', camp.data.campaign?.approvedAt === null, JSON.stringify(camp.data.campaign));
@@ -129,7 +130,7 @@ async function text(path) {
   // 10) Flujo directo: approve:true nace QUEUED sin borrador intermedio
   const camp2 = await j('POST', '/api/fb-campaigns', {
     name: `Directa P2 ${stamp}`, text: 'Flujo directo aprobado al crear.', mode: 'profile',
-    windowStart: 0, windowEnd: 24, approve: true,
+    windowStart: 0, windowEnd: 24, nightOverride: true, approve: true,
   });
   check('approve:true nace QUEUED', camp2.status === 200 && camp2.data.campaign?.status === 'QUEUED', JSON.stringify(camp2.data.campaign));
   const approveCamp2 = await j('PATCH', '/api/fb-campaigns', { campaignId: camp2.data.campaign?.id, action: 'approve' });
@@ -138,7 +139,7 @@ async function text(path) {
   // 11) Cancelar un borrador cancela sus jobs PENDING_APPROVAL
   const camp3 = await j('POST', '/api/fb-campaigns', {
     name: `Borrador a cancelar P2 ${stamp}`, text: 'Este borrador se cancelará sin aprobar.', mode: 'profile',
-    windowStart: 0, windowEnd: 24,
+    windowStart: 0, windowEnd: 24, nightOverride: true,
   });
   const c3id = camp3.data.campaign?.id;
   const cancelDraft = await j('PATCH', '/api/fb-campaigns', { campaignId: c3id, action: 'cancel' });
@@ -161,5 +162,11 @@ async function text(path) {
   await prisma.$disconnect();
 
   console.log(`\nResultado: ${pass} pasan · ${fail} fallan`);
+  
+  // Higiene (F-OPS-09): restaurar el modo de autonomía global previo al test.
+  if (typeof prevAutonomy !== 'undefined') {
+    if (prevAutonomy === null) await prisma.setting.delete({ where: { key: 'autonomy_mode' } }).catch(() => undefined);
+    else await prisma.setting.upsert({ where: { key: 'autonomy_mode' }, create: { key: 'autonomy_mode', value: prevAutonomy }, update: { value: prevAutonomy } });
+  }
   process.exit(fail > 0 ? 1 : 0);
 })().catch((e) => { console.error('Fallo del runner:', e); process.exit(1); });

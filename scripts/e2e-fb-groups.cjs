@@ -1,7 +1,7 @@
 // E2E del módulo FB-GROUPS (sin tocar Facebook real: solo contrato chaleco↔worker)
 const stamp = Date.now();
 const CAMP_NAME = 'E2E-' + stamp;
-const BASE = 'http://localhost:3000';
+const BASE = process.env.TEST_BASE ?? 'http://localhost:3000';
 const crypto = require('crypto');
 
 const log = (...a) => console.log(...a);
@@ -57,7 +57,7 @@ async function j(method, path, body, headers = {}) {
   log('— 4. Campaña con 2 objetivos (spintax {Hola|Buenas})');
   const camp = await j('POST', '/api/fb-campaigns', {
     name: CAMP_NAME, text: '{Hola|Buenas} vecinos, probando el pantalón del chaleco con {café|amor}.', mode: 'group', engine: 'dom',
-    firstComment: 'Enlace en el primer comentario', targets: [groups[0].id, groups[1].id], windowStart: 0, windowEnd: 24, approve: true,
+    firstComment: 'Enlace en el primer comentario', targets: [groups[0].id, groups[1].id], windowStart: 0, windowEnd: 24, nightOverride: true, approve: true,
   });
   check('campaña creada con 2 jobs', camp.status === 200 && camp.data.jobs === 2, JSON.stringify(camp.data));
 
@@ -82,6 +82,14 @@ async function j(method, path, body, headers = {}) {
   const rep = await fetch(BASE + '/api/fb-jobs/report', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-fb-signature': crypto.createHmac('sha256', SECRET).update(repBody).digest('hex') }, body: repBody }).then((r) => r.json());
   check('reporte aplicado', rep.applied === 1, JSON.stringify(rep));
   check('uso diario = 1', rep.ok === true);
+
+  // Idempotencia ante reintento (F-DATA-02): el mismo reporte re-enviado NO
+  // vuelve a aplicar ni re-consume el techo diario.
+  const repDup = await fetch(BASE + '/api/fb-jobs/report', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-fb-signature': crypto.createHmac('sha256', SECRET).update(repBody).digest('hex') }, body: repBody }).then((r) => r.json());
+  check('reporte duplicado ignorado (idempotente)', repDup.applied === 0, JSON.stringify(repDup));
+  const workersAfterDup = (await j('GET', '/api/fb-workers')).data;
+  const usageAfterDup = workersAfterDup.workers.find((w) => w.id === WORKER_ID)?.usage?.postsToday;
+  check('techo no re-consumido por el duplicado (posts hoy = 1)', usageAfterDup === 1, `postsToday=${usageAfterDup}`);
 
   log('— 8. Segundo claim → segundo job; reporte; campaña DONE');
   const c2 = await doClaim();
@@ -109,6 +117,17 @@ async function j(method, path, body, headers = {}) {
   const actions = JSON.stringify(audit.data);
   check('FB_WORKER_REGISTERED + FB_JOB_POSTED + FB_ALERT_CHALLENGE en auditoría',
     actions.includes('FB_WORKER_REGISTERED') && actions.includes('FB_JOB_POSTED') && actions.includes('FB_ALERT_CHALLENGE'));
+
+  log('— 12. Higiene: limpieza del arnés de prueba');
+  const groupsAll = (await j('GET', '/api/fb-groups')).data.groups;
+  let excludedE2E = 0;
+  for (const g of groupsAll.filter((g) => String(g.fbId).startsWith('grupo.e2e.'))) {
+    const r = await j('PATCH', '/api/fb-groups', { id: g.id, excluded: true });
+    if (r.status === 200) excludedE2E += 1;
+  }
+  check('grupos de prueba excluidos de la rotación real', excludedE2E >= 2, `excluidos=${excludedE2E}`);
+  const delWorker = await j('POST', '/api/fb-workers', { action: 'delete', workerId: WORKER_ID });
+  check('worker de prueba eliminado (sin residuos en producción)', delWorker.status === 200, JSON.stringify(delWorker.data));
 
   log(`\nRESULTADO: ${ok} ✓ / ${fail} ✗`);
   process.exit(fail > 0 ? 1 : 0);

@@ -57,3 +57,12 @@ export function verifyWebhookSignature(
 
   return { ok: false, method: 'none', reason: 'Sin firma HMAC ni Bearer válido' };
 }
+
+/** ¿La petición llega desde la propia máquina? (sin proxy delante: sin
+ *  x-forwarded-for y con host de loopback). Se usa para el modo local
+ *  honesto de webhooks/tick cuando no hay secreto configurado. */
+export function isLoopbackRequest(headers: Headers): boolean {
+  if (headers.get('x-forwarded-for')) return false; // viene de un proxy → no es local
+  const host = (headers.get('host') ?? '').toLowerCase().split(':')[0];
+  return host === 'localhost' || host === '127.0.0.1' || host === '[::1]' || host === '::1';
+}

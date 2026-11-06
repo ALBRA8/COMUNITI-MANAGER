@@ -31,10 +31,15 @@ export function MemorySection({ harness, brandId, refresh }: SectionProps) {
 }
 
 function MemoryForm({ brand, refresh }: { brand: NonNullable<HarnessState['brands'][number]>; refresh: () => void }) {
+  // Hidratación desde los datos REALES de la marca (F-UX-01): antes el formulario
+  // nacía con cadenas vacías y el PATCH sobrescribía productos/vocabulario/FAQs
+  // existentes con vacío (pérdida silenciosa de memoria de marca).
   const [brandForm, setBrandForm] = useState<BrandDetail>({
-    id: brand.id, name: brand.name, identity: brand.identity, products: '', audience: '', tone: brand.tone,
-    vocabulary: '', forbiddenWords: '', policies: '', faqs: '[]', approvedExamples: '[]',
-    supportInfo: '', maxPostsPerDay: brand.maxPostsPerDay, allowedHours: brand.allowedHours,
+    id: brand.id, name: brand.name, identity: brand.identity ?? '',
+    products: brand.products ?? '', audience: brand.audience ?? '', tone: brand.tone ?? '',
+    vocabulary: brand.vocabulary ?? '', forbiddenWords: brand.forbiddenWords ?? '', policies: brand.policies ?? '',
+    faqs: brand.faqs ?? '[]', approvedExamples: brand.approvedExamples ?? '[]',
+    supportInfo: brand.supportInfo ?? '', maxPostsPerDay: brand.maxPostsPerDay, allowedHours: brand.allowedHours ?? '08-20',
   });
   const [note, setNote] = useState('');
 
@@ -44,10 +49,15 @@ function MemoryForm({ brand, refresh }: { brand: NonNullable<HarnessState['brand
     try { faqs = JSON.parse(brandForm.faqs || '[]'); } catch { setNote('FAQs debe ser JSON válido: [{"q":"...","a":"..."}]'); return; }
     let examples: unknown = [];
     try { examples = JSON.parse(brandForm.approvedExamples || '[]'); } catch { setNote('Ejemplos debe ser JSON válido: [{"network":"instagram","text":"..."}]'); return; }
-    await fetch('/api/brands', {
+    const res = await fetch('/api/brands', {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: brandForm.id, identity: brandForm.identity, tone: brandForm.tone, products: brandForm.products, audience: brandForm.audience, vocabulary: brandForm.vocabulary, forbiddenWords: brandForm.forbiddenWords, policies: brandForm.policies, supportInfo: brandForm.supportInfo, maxPostsPerDay: brandForm.maxPostsPerDay, allowedHours: brandForm.allowedHours, faqs, approvedExamples: examples }),
     });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setNote(data.error ?? 'No se pudo guardar la memoria de marca (intenta de nuevo).');
+      return;
+    }
     setNote('Memoria de marca actualizada. Toda generación usará estos datos.');
     refresh();
   };

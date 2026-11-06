@@ -29,6 +29,7 @@ const sign = (raw, secret) => require('node:crypto').createHmac('sha256', secret
   // 0) Autonomía L1 para que la variante sea spintax determinista (sin IA en el test)
   const { PrismaClient } = require('@prisma/client');
   const prisma = new PrismaClient();
+  const prevAutonomy = (await prisma.setting.findUnique({ where: { key: 'autonomy_mode' } }))?.value ?? null;
   await prisma.setting.upsert({ where: { key: 'autonomy_mode' }, create: { key: 'autonomy_mode', value: 'L1_ASSISTED' }, update: { value: 'L1_ASSISTED' } });
   await prisma.$disconnect();
 
@@ -70,7 +71,7 @@ const sign = (raw, secret) => require('node:crypto').createHmac('sha256', secret
   // 4) Campaña de riesgo BAJO: spintax, 1 objetivo, adjunto, ventana amplia, sin comentario
   const bajo = await j('POST', '/api/fb-campaigns', {
     name: `RiesgoBajo-${stamp}`, text: 'Texto largo y variado {con|sin} spintax para un solo grupo, con suficiente contexto natural para no parecer spam', mode: 'group', engine: 'dom',
-    mediaUrls: ['https://example.com/foto.jpg'], targets: [testGroups[0].id], windowStart: 0, windowEnd: 24,
+    mediaUrls: ['https://example.com/foto.jpg'], targets: [testGroups[0].id], windowStart: 0, windowEnd: 24, nightOverride: true,
   });
   check('riesgo BAJO con mitigante de adjunto', bajo.data.risk?.level === 'BAJO' && bajo.data.risk.factors.some((f) => f.points < 0), JSON.stringify({ score: bajo.data.risk?.score, level: bajo.data.risk?.level }));
 
@@ -89,7 +90,7 @@ const sign = (raw, secret) => require('node:crypto').createHmac('sha256', secret
   const rotMedia = [`https://example.com/a-${stamp}.jpg`, `https://example.com/b-${stamp}.jpg`, `https://example.com/c-${stamp}.jpg`];
   const rot = await j('POST', '/api/fb-campaigns', {
     name: `Rotacion-${stamp}`, text: `Texto rotación {uno|dos} con bastante cuerpo para pasar el filtro de longitud del ${stamp}`, mode: 'group', engine: 'dom',
-    mediaUrls: rotMedia, mediaMode: 'rotate', targets: testGroups.slice(0, 3).map((g) => g.id), windowStart: 0, windowEnd: 24, approve: true,
+    mediaUrls: rotMedia, mediaMode: 'rotate', targets: testGroups.slice(0, 3).map((g) => g.id), windowStart: 0, windowEnd: 24, nightOverride: true, approve: true,
   });
   check('campaña con rotación creada', rot.status === 200 && rot.data.campaign?.id, JSON.stringify(rot.data).slice(0, 120));
   const picked = [];
@@ -107,7 +108,7 @@ const sign = (raw, secret) => require('node:crypto').createHmac('sha256', secret
   // 7) Bump-comment con delay + negrita unicode (L1 → spintax determinista)
   const bold = await j('POST', '/api/fb-campaigns', {
     name: `Bold-${stamp}`, text: 'Nueva {oferta|promo} especial para *compradores* inteligentes este fin de semana con envío gratis', mode: 'group', engine: 'dom',
-    firstComment: 'link en comentario', commentDelaySec: 90, boldStyle: 'unicode', targets: [testGroups[0].id], windowStart: 0, windowEnd: 24, approve: true,
+    firstComment: 'link en comentario', commentDelaySec: 90, boldStyle: 'unicode', targets: [testGroups[0].id], windowStart: 0, windowEnd: 24, nightOverride: true, approve: true,
   });
   check('campaña bold+delay creada', bold.status === 200 && bold.data.campaign?.id, JSON.stringify(bold.data).slice(0, 120));
   const claimBold = await signed('/api/fb-jobs/claim', { workerId, capacity: 1 });
@@ -133,5 +134,11 @@ const sign = (raw, secret) => require('node:crypto').createHmac('sha256', secret
   check('worker de prueba eliminado', del.status === 200);
 
   console.log(`\nResultado: ${pass} ✓ / ${fail} ✗`);
+  
+  // Higiene (F-OPS-09): restaurar el modo de autonomía global previo al test.
+  if (typeof prevAutonomy !== 'undefined') {
+    if (prevAutonomy === null) await prisma.setting.delete({ where: { key: 'autonomy_mode' } }).catch(() => undefined);
+    else await prisma.setting.upsert({ where: { key: 'autonomy_mode' }, create: { key: 'autonomy_mode', value: prevAutonomy }, update: { value: prevAutonomy } });
+  }
   process.exit(fail ? 1 : 0);
 })().catch((e) => { console.error('FATAL', e); process.exit(1); });

@@ -77,8 +77,16 @@ export async function runDueSchedules(now = new Date()): Promise<SchedulerTickRe
       continue;
     }
 
-    // Marcar ANTES de ejecutar (anti-doble-disparo si el tick se solapa)
-    await db.schedule.update({ where: { id: s.id }, data: { lastRunAt: now } });
+    // CAS anti-doble-disparo (F-DATA-21): solo se marca si lastRunAt sigue
+    // siendo el valor leído; dos ticks concurrentes no disparan dos veces.
+    const cas = await db.schedule.updateMany({
+      where: { id: s.id, lastRunAt: s.lastRunAt },
+      data: { lastRunAt: now },
+    });
+    if (cas.count === 0) {
+      result.skipped.push({ scheduleId: s.id, name: s.name, reason: 'Otro tick la marcó en ejecución (anti-doble-disparo)' });
+      continue;
+    }
 
     // El ciclo corre en segundo plano: puede tardar minutos (LLM + fases)
     runFullCycle(s.brandId, { topic: s.topic || undefined, objective: s.objective || undefined })
@@ -156,11 +164,36 @@ async function policyWatchTick(): Promise<void> {
   }
 }
 
+/** Barrido de tareas PENDING con reintento vencido (F-OPS-05): el backoff
+ *  que runTask escribe en nextRetryAt solo tiene efecto si alguien vuelve a
+ *  despacharlas; sin esto quedaban zombies para siempre. Tope de 3 por tick. */
+async function retryPendingTasks(): Promise<number> {
+  const due = await db.task.findMany({
+    where: { status: 'PENDING', nextRetryAt: { lte: new Date() } },
+    orderBy: { nextRetryAt: 'asc' },
+    take: 3,
+    select: { id: true },
+  });
+  for (const t of due) {
+    const { runTask } = await import('@/lib/orchestrator');
+    await runTask(t.id).catch(async (e) => {
+      await db.errorLog.create({ data: { source: 'scheduler-retry', severity: 'ERROR', message: `Reintento de tarea ${t.id} falló: ${(e as Error).message}`, detailJson: '{}' } }).catch(() => undefined);
+    });
+  }
+  return due.length;
+}
+
 export function startSchedulerLoop(intervalMs = 60_000): { started: boolean; note: string } {
   if (g.__comunitiScheduler) return { started: false, note: 'El bucle del scheduler ya estaba activo' };
   const timer = setInterval(() => {
+    // Telemetría honesta (F-OPS-15): lastTick refleja el ÚLTIMO tick, no el arranque.
+    if (g.__comunitiScheduler) g.__comunitiScheduler.lastTick = new Date().toISOString();
     runDueSchedules().catch(async (e) => {
       await db.errorLog.create({ data: { source: 'scheduler', severity: 'ERROR', message: `Tick falló: ${(e as Error).message}`, detailJson: '{}' } }).catch(() => undefined);
+    });
+    // Reintentos con backoff vencido: mismo bucle, tope propio por tick.
+    retryPendingTasks().catch(async (e) => {
+      await db.errorLog.create({ data: { source: 'scheduler-retry', severity: 'ERROR', message: `Barrido de reintentos falló: ${(e as Error).message}`, detailJson: '{}' } }).catch(() => undefined);
     });
     // Vigilancia de políticas: mismo bucle, throttle propio de 30 minutos.
     policyWatchTick().catch(() => undefined);

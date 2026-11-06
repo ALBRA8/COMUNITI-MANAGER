@@ -51,7 +51,11 @@ export function CommunitySection({ harness, brandId, refresh }: SectionProps) {
     if (!newItem.text) return;
     const res = await fetch('/api/community', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ brandId, ...newItem }) });
     const data = await res.json();
-    setNote(data.autoReplyAllowed ? 'Clasificada: respuesta automática permitida en modo actual.' : `Clasificada: ${data.autoReplyReason}`);
+    if (!res.ok) {
+      setNote(data.error ?? 'No se pudo clasificar la interacción.');
+      return;
+    }
+    setNote(data.autoReplyAllowed ? 'Clasificada: respuesta automática permitida en modo actual.' : `Clasificada: ${data.autoReplyReason ?? 'sin respuesta automática en el modo actual'}`);
     setNewItem({ network: 'instagram', author: '', text: '' });
     load();
   };
@@ -62,6 +66,11 @@ export function CommunitySection({ harness, brandId, refresh }: SectionProps) {
       body: JSON.stringify({ id, action, replyText: replies[id] }),
     });
     const data = await res.json();
+    if (!res.ok) {
+      setNote(data.error ?? data.reason ?? 'La acción no se pudo aplicar.');
+      load(); refresh();
+      return;
+    }
     if (data.requiresApproval) setNote(`Enviado a la cola de aprobaciones (${data.reason})`);
     else setNote(data.note ?? data.reason ?? 'Acción aplicada');
     load(); refresh();

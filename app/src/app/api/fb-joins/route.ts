@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { normalizeGroupUrl } from '@/lib/fb-groups';
+import { guardPanel } from '@/lib/panel-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,6 +39,8 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const denied = guardPanel(req);
+  if (denied) return denied;
   const body = await req.json().catch(() => ({}));
   const rawList: string[] = Array.isArray(body.urls) ? body.urls.map(String) : String(body.urls ?? '').split('\n');
   const keyword = String(body.keyword ?? '').trim().slice(0, 60);
@@ -88,6 +91,8 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  const denied = guardPanel(req);
+  if (denied) return denied;
   const body = await req.json().catch(() => ({}));
   const id = String(body.id ?? '');
   const action = String(body.action ?? 'cancel');

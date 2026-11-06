@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { guardPanel } from '@/lib/panel-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,6 +15,8 @@ export async function GET() {
 
 // Importación masiva (desde el sync del worker o pegada manual). Idempotente por fbId.
 export async function POST(req: NextRequest) {
+  const denied = guardPanel(req);
+  if (denied) return denied;
   const body = await req.json().catch(() => ({}));
   const groups: Array<{ fbId?: string; name?: string; url?: string; collection?: string }> = Array.isArray(body.groups) ? body.groups : [];
   if (groups.length === 0) return NextResponse.json({ error: 'groups[] requerido' }, { status: 400 });
@@ -34,6 +37,8 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  const denied = guardPanel(req);
+  if (denied) return denied;
   const body = await req.json().catch(() => ({}));
   if (!body.id) return NextResponse.json({ error: 'id requerido' }, { status: 400 });
   const group = await db.fbGroup.findUnique({ where: { id: String(body.id) } });

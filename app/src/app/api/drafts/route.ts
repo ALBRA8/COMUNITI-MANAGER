@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { loadBrandMemory, validateContent } from '@/lib/brand-memory';
 import { NETWORKS, NETWORK_SPECS, type Network } from '@/lib/contracts';
+import { guardPanel } from '@/lib/panel-auth';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -19,6 +20,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const denied = guardPanel(req);
+  if (denied) return denied;
   const body = await req.json().catch(() => ({}));
   const { brandId, objective, theme, network, text, adaptTo } = body;
   if (!brandId || !objective) return NextResponse.json({ error: 'brandId y objective requeridos' }, { status: 400 });
@@ -45,7 +48,7 @@ export async function POST(req: NextRequest) {
 
   // Adaptación multirred a otras redes solicitadas
   const adapted: { network: string; text: string; validation: unknown }[] = [];
-  const others: Network[] = (Array.isArray(adaptTo) ? adaptTo : []).filter((n: string) => NETWORKS.includes(n) && n !== targetNetwork);
+  const others: Network[] = (Array.isArray(adaptTo) ? adaptTo : []).filter((n): n is Network => NETWORKS.includes(n as Network) && n !== targetNetwork);
   for (const n of others) {
     const adaptedText = await adaptForNetwork(memory, n, initialText, objective);
     const c = validateContent(memory, n, adaptedText);
@@ -58,6 +61,8 @@ export async function POST(req: NextRequest) {
 
 // Revalidar / editar versión
 export async function PATCH(req: NextRequest) {
+  const denied = guardPanel(req);
+  if (denied) return denied;
   const body = await req.json().catch(() => ({}));
   const { versionId, text } = body;
   const version = await db.postVersion.findUnique({ where: { id: versionId }, include: { draft: true } });

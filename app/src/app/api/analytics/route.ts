@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ taskId: task.id, report });
 }
 
-function buildRecommendations(pubCount: number, comments: { classification: string; _count: { _all: number } }[], outcome: string): string[] {
+function buildRecommendations(pubCount: number, comments: { classification: string; _count: number }[], outcome: string): string[] {
   const recs: string[] = [];
   if (outcome !== 'OK') {
     recs.push('Conecta un proveedor de publicación/analítica (Postgale, Postiz o PostLake) para métricas verificadas por red.');
@@ -74,7 +74,7 @@ function buildRecommendations(pubCount: number, comments: { classification: stri
   } else {
     recs.push('Registra experimentos A/B (hook vs. tutorial) para acumular patrones comparables entre ciclos.');
   }
-  const spam = comments.find((c) => c.classification === 'SPAM')?._count._all ?? 0;
+  const spam = comments.find((c) => c.classification === 'SPAM')?._count ?? 0;
   if (spam > 0) {
     recs.push(`Se detectaron ${spam} interacciones tipo SPAM: revisa la política de moderación en Configuración de seguridad.`);
   }
