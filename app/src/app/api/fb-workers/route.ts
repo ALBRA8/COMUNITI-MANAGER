@@ -42,7 +42,10 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   // El raw se lee UNA sola vez (el ping necesita el cuerpo exacto para verificar HMAC).
   const raw = await req.text();
-  const body = JSON.parse(raw || '{}');
+  let body: Record<string, unknown>;
+  try { body = JSON.parse(raw || '{}'); } catch {
+    return NextResponse.json({ error: 'JSON inválido' }, { status: 400 });
+  }
   // F-SEC-01: register/delete/set_session_age son mutaciones de panel; el ping tiene su propia autenticación HMAC.
   if (body.action !== 'ping') {
   const denied = guardPanel(req);

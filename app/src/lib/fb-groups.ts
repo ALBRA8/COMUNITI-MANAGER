@@ -223,15 +223,20 @@ export async function claimJobsForWorker(
 
   // Reaper de leases vencidos (FICHA §5): "si el worker muere, el job vuelve a
   // QUEUED"; al tercer intento sin reporte, fallo honesto con su motivo.
-  const expiredJobs = await db.fbJob.findMany({ where: { status: 'LEASED', leaseUntil: { lt: new Date() } }, select: { id: true, attempts: true, targetName: true } });
+  // CAS (F2-DATA-01): la transición solo procede si el job SIGUE LEASED con el
+  // lease vencido — un reporte tardío que llegue entre lectura y escritura gana
+  // y el reaper no pisa un POSTED ni resucita un CANCELLED.
+  const now = new Date();
+  const expiredJobs = await db.fbJob.findMany({ where: { status: 'LEASED', leaseUntil: { lt: now } }, select: { id: true, attempts: true, targetName: true } });
   for (const ej of expiredJobs) {
     const fatal = ej.attempts >= 3;
-    await db.fbJob.update({
-      where: { id: ej.id },
+    const reaped = await db.fbJob.updateMany({
+      where: { id: ej.id, status: 'LEASED', leaseUntil: { lt: now } },
       data: fatal
         ? { status: 'FAILED', failReason: 'Lease vencido 3 veces sin reporte del worker', leaseUntil: null }
         : { status: 'QUEUED', leaseUntil: null },
     });
+    if (reaped.count === 0) continue; // el worker reportó justo a tiempo
     await audit('FB_JOB_LEASE_EXPIRED', 'FB_JOB', ej.id, fatal ? `Job de "${ej.targetName}" falló: lease vencido 3 veces sin reporte` : `Lease vencido de "${ej.targetName}" reencolado (el worker no reportó a tiempo)`);
   }
 
@@ -292,7 +297,11 @@ export async function claimJobsForWorker(
     });
     for (const job of candidates) {
       if (job.targetKind === 'group' && !job.group) continue;
-      const until = new Date(Date.now() + 10 * 60 * 1000);
+      // Duración del lease = base 10 min + commentDelaySec + margen (F2-ARC-02):
+      // el worker espera el delay del bump-comment ANTES de reportar; un lease
+      // fijo de 10 min con delay de hasta 3600 s vencía en vuelo y el reaper
+      // reencolaba un job que seguía publicándose (doble publicación segura).
+      const until = new Date(Date.now() + 10 * 60 * 1000 + (campaign.commentDelaySec ?? 0) * 1000 + 2 * 60 * 1000);
       // Reclamo ATÓMICO (F-DATA-01): la transición QUEUED→LEASED solo ocurre si
       // el job sigue QUEUED (updateMany condicional + count). Entre la lectura
       // y aquí puede pasar la IA de otro claim: quien pierde, no entrega.
@@ -316,7 +325,9 @@ export async function claimJobsForWorker(
         where: { id: job.id },
         data: { variant: variant.text, variantSource: variant.source },
       });
-      await db.fbCampaign.update({ where: { id: campaign.id }, data: { status: 'RUNNING' } });
+      // CAS de campaña (F2-DATA-02): entre la lectura y aquí el operador pudo
+      // pausar o cancelar; forzar RUNNING resucitaría una campaña muerta.
+      await db.fbCampaign.updateMany({ where: { id: campaign.id, status: { in: ['QUEUED', 'RUNNING'] } }, data: { status: 'RUNNING' } });
       await audit('FB_JOB_LEASED', 'FB_JOB', updated.id, `Worker reclama job para "${updated.targetName}" (variante ${updated.variantSource})`);
       leases.push({
         id: updated.id,
@@ -397,15 +408,21 @@ export async function claimJoinTaskForWorker(
     return { task: null, joinCap, joinsToday: usage.joins, pausedUntil: activeAlert.pausedUntil, pausedKind: activeAlert.kind, note: `PAUSED_ANTI_BAN: ${activeAlert.message}` };
   }
 
-  // Leases vencidos: reencolar; a los 3 intentos sin reporte, fallo honesto.
-  const expired = await db.fbJoinTask.findMany({ where: { status: 'LEASED', leaseUntil: { lt: new Date() } } });
+  // Leases vencidos de joins: reencolar (limpiando el pin al worker muerto,
+  // F2-DATA-04: una tarea pineada a un worker que no vuelve sería intocable);
+  // a los 3 intentos sin reporte, fallo honesto. CAS igual que los jobs.
+  const nowJoin = new Date();
+  const expired = await db.fbJoinTask.findMany({ where: { status: 'LEASED', leaseUntil: { lt: nowJoin } } });
   for (const t of expired) {
-    await db.fbJoinTask.update({
-      where: { id: t.id },
-      data: t.attempts >= 3
+    const fatal = t.attempts >= 3;
+    const reapedJoin = await db.fbJoinTask.updateMany({
+      where: { id: t.id, status: 'LEASED', leaseUntil: { lt: nowJoin } },
+      data: fatal
         ? { status: 'FAILED', failReason: 'Lease vencido 3 veces sin reporte del worker', leaseUntil: null }
-        : { status: 'PENDING', leaseUntil: null },
+        : { status: 'PENDING', leaseUntil: null, workerId: null },
     });
+    if (reapedJoin.count === 0) continue;
+    await audit('FB_JOIN_LEASE_EXPIRED', 'FB_JOIN_TASK', t.id, fatal ? `Unión a ${t.url} falló: lease vencido 3 veces sin reporte` : `Lease vencido de ${t.url} reencolado y liberado para cualquier worker`);
   }
 
   // El techo cuenta también las uniones EN VUELO (leases sin reporte aún).

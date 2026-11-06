@@ -230,7 +230,9 @@ export function FbGroupsSection({ brandId, refresh }: SectionProps) {
         <CardContent className="space-y-3">
           <WorkerForm busy={busy} onRegister={async (payload) => {
             const data = await post('/api/fb-workers', { action: 'register', ...payload }, 'Worker registrado. Copia el secreto ahora: no se volverá a mostrar.');
+            if (!data) return false;
             if (data?.secret) setSecretShown(data.secret);
+            return true;
           }} />
           {workers.length === 0 ? (
             <p className="text-xs text-muted-foreground">Sin workers registrados. Registra uno para activar la publicación en grupos.</p>
@@ -294,7 +296,8 @@ export function FbGroupsSection({ brandId, refresh }: SectionProps) {
         </CardHeader>
         <CardContent className="space-y-3">
           <GroupImport busy={busy} onImport={async (payload) => {
-            await post('/api/fb-groups', payload, `Importación completada: ${payload.groups.length} grupos procesados`);
+            const data = await post('/api/fb-groups', payload, `Importación completada: ${payload.groups.length} grupos procesados`);
+            return Boolean(data);
           }} />
           {groups.length > 0 ? <GroupsTable groups={groups} busy={busy} onToggle={async (g) => {
             const res = await fetch('/api/fb-groups', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: g.id, excluded: !g.excluded }) });
@@ -318,9 +321,11 @@ export function FbGroupsSection({ brandId, refresh }: SectionProps) {
         <CardContent className="space-y-3">
           <JoinForm busy={busy} onCreate={async (payload) => {
             const data = await post('/api/fb-joins', payload, 'Tareas de unión creadas: el worker las reclamará respetando su techo y ritmo.');
-            if (data && (data.rejected ?? []).length > 0) {
+            if (!data) return false;
+            if ((data.rejected ?? []).length > 0) {
               setNotice({ msg: `Tareas creadas: ${data.created}. Rechazadas: ${(data.rejected as Array<{ reason: string }>).map((r) => r.reason).join(' | ')}`, ok: false });
             }
+            return true;
           }} />
           {joinTasks.length > 0 && (
             <>
@@ -355,16 +360,18 @@ export function FbGroupsSection({ brandId, refresh }: SectionProps) {
                           {['PENDING', 'FAILED'].includes(t.status) ? (
                             <Button size="sm" variant="outline" className="h-6 text-[10px]" disabled={busy}
                               onClick={async () => {
-                                await fetch('/api/fb-joins', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: t.id, action: 'cancel' }) });
-                                setNotice({ msg: 'Tarea de unión cancelada', ok: true }); await load();
+                                const res = await fetch('/api/fb-joins', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: t.id, action: 'cancel' }) });
+                                const data = await res.json().catch(() => ({}));
+                                setNotice({ msg: res.ok ? 'Tarea de unión cancelada' : (data.error ?? 'No se pudo cancelar'), ok: res.ok }); await load();
                               }}>
                               Cancelar
                             </Button>
                           ) : ['JOINED', 'REQUESTED', 'SKIPPED', 'FAILED', 'CANCELLED'].includes(t.status) ? (
                             <Button size="sm" variant="outline" className="h-6 text-[10px]" disabled={busy}
                               onClick={async () => {
-                                await fetch('/api/fb-joins', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: t.id, action: 'delete' }) });
-                                setNotice({ msg: 'Tarea terminada eliminada de la lista', ok: true }); await load();
+                                const res = await fetch('/api/fb-joins', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: t.id, action: 'delete' }) });
+                                const data = await res.json().catch(() => ({}));
+                                setNotice({ msg: res.ok ? 'Tarea terminada eliminada de la lista' : (data.error ?? 'No se pudo eliminar'), ok: res.ok }); await load();
                               }}>
                               Quitar
                             </Button>
@@ -555,7 +562,7 @@ function GroupsTable({ groups, busy, onToggle }: {
 
 // ─── Formularios ───────────────────────────────────────────────────
 
-function WorkerForm({ busy, onRegister }: { busy: boolean; onRegister: (payload: { name: string; baseUrl: string; mode: string; sessionAgeDays: number; proxyUrl: string }) => Promise<void> }) {
+function WorkerForm({ busy, onRegister }: { busy: boolean; onRegister: (payload: { name: string; baseUrl: string; mode: string; sessionAgeDays: number; proxyUrl: string }) => Promise<boolean | void> }) {
   const [name, setName] = useState('');
   const [baseUrl, setBaseUrl] = useState('http://localhost:8765');
   const [mode, setMode] = useState('pc');
@@ -575,7 +582,7 @@ function WorkerForm({ busy, onRegister }: { busy: boolean; onRegister: (payload:
         </Select>
         <Input className="h-8 w-28 text-xs" type="number" min={0} placeholder="Días de cuenta" value={sessionAgeDays} onChange={(e) => setSessionAgeDays(e.target.value)} />
         <Button size="sm" className="h-8 text-xs" disabled={busy || !name || !baseUrl}
-          onClick={async () => { await onRegister({ name, baseUrl, mode, sessionAgeDays: Number(sessionAgeDays), proxyUrl: proxyUrl.trim() }); setName(''); setProxyUrl(''); }}>
+          onClick={async () => { if (await onRegister({ name, baseUrl, mode, sessionAgeDays: Number(sessionAgeDays), proxyUrl: proxyUrl.trim() }) !== false) { setName(''); setProxyUrl(''); } }}>
           Registrar worker
         </Button>
       </div>
@@ -584,7 +591,7 @@ function WorkerForm({ busy, onRegister }: { busy: boolean; onRegister: (payload:
   );
 }
 
-function GroupImport({ busy, onImport }: { busy: boolean; onImport: (payload: { groups: Array<{ fbId: string; name: string; url: string; collection: string }> }) => Promise<void> }) {
+function GroupImport({ busy, onImport }: { busy: boolean; onImport: (payload: { groups: Array<{ fbId: string; name: string; url: string; collection: string }> }) => Promise<boolean | void> }) {
   const [raw, setRaw] = useState('');
   const [collection, setCollection] = useState('general');
   const parse = () => raw.split('\n').map((l) => l.trim()).filter(Boolean).map((l) => {
@@ -596,7 +603,7 @@ function GroupImport({ busy, onImport }: { busy: boolean; onImport: (payload: { 
       <Textarea className="text-xs min-h-[64px]" placeholder={'Nombre del grupo | https://facebook.com/groups/...&#10;(un grupo por línea)'} value={raw} onChange={(e) => setRaw(e.target.value)} />
       <div className="flex gap-2 items-center">
         <Input className="h-8 w-40 text-xs" placeholder="Colección" value={collection} onChange={(e) => setCollection(e.target.value)} />
-        <Button size="sm" className="h-8 text-xs" disabled={busy || !raw.trim()} onClick={async () => { await onImport({ groups: parse() }); setRaw(''); }}>
+        <Button size="sm" className="h-8 text-xs" disabled={busy || !raw.trim()} onClick={async () => { if (await onImport({ groups: parse() }) !== false) setRaw(''); }}>
           Importar grupos
         </Button>
         <span className="text-muted-foreground">El worker también sincroniza la lista automáticamente desde tu sesión.</span>
@@ -605,7 +612,7 @@ function GroupImport({ busy, onImport }: { busy: boolean; onImport: (payload: { 
   );
 }
 
-function JoinForm({ busy, onCreate }: { busy: boolean; onCreate: (payload: { urls: string[]; keyword: string }) => Promise<void> }) {
+function JoinForm({ busy, onCreate }: { busy: boolean; onCreate: (payload: { urls: string[]; keyword: string }) => Promise<boolean | void> }) {
   const [raw, setRaw] = useState('');
   const [keyword, setKeyword] = useState('');
   const urls = raw.split('\n').map((s) => s.trim()).filter(Boolean);
@@ -615,7 +622,7 @@ function JoinForm({ busy, onCreate }: { busy: boolean; onCreate: (payload: { url
       <div className="flex gap-2 items-center">
         <Input className="h-8 w-44 text-xs" placeholder="Keyword de origen (opcional)" value={keyword} onChange={(e) => setKeyword(e.target.value)} />
         <Button size="sm" className="h-8 text-xs" disabled={busy || urls.length === 0}
-          onClick={async () => { await onCreate({ urls, keyword: keyword.trim() }); setRaw(''); }}>
+          onClick={async () => { if (await onCreate({ urls, keyword: keyword.trim() }) !== false) setRaw(''); }}>
           Encolar uniones ({urls.length})
         </Button>
         <span className="text-muted-foreground">Descubre grupos buscando en Facebook con tu keyword; pega aquí sus URLs. Solo grupos públicos sin cuestionario se automatizan.</span>

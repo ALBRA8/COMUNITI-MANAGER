@@ -140,6 +140,7 @@ async function j(method, path, body, headers = {}) {
   // ── CASO 8: solicitud de aprobación humana (HITL) ──
   console.log('8) Solicitud de aprobación humana');
   const prevAutonomy = (await prisma.setting.findUnique({ where: { key: 'autonomy_mode' } }))?.value ?? null;
+  globalThis.__prevAutonomy = prevAutonomy; // disponible también en el catch de salida temprana
   await prisma.setting.upsert({ where: { key: 'autonomy_mode' }, create: { key: 'autonomy_mode', value: 'L1_ASSISTED' }, update: { value: 'L1_ASSISTED' } });
   const g8 = await prisma.fbGroup.create({ data: { fbId: `mp-test-grupo-${stamp}`, name: 'MP-TEST grupo', collection: 'test' } });
   const r8 = await j('POST', '/api/fb-campaigns', { name: `MP-TEST ${stamp}`, text: 'Texto de prueba de cumplimiento {uno|dos}', targets: [g8.id], approve: false });
@@ -271,4 +272,10 @@ async function j(method, path, body, headers = {}) {
     else await prisma.setting.upsert({ where: { key: 'autonomy_mode' }, create: { key: 'autonomy_mode', value: prevAutonomy }, update: { value: prevAutonomy } });
   }
   process.exit(fail === 0 ? 0 : 1);
-})().catch((e) => { console.error('Error fatal:', e); process.exit(1); });
+})().catch(async (e) => {
+  try { // higiene también en salida temprana (F2-OPS-01)
+    const prev = globalThis.__prevAutonomy;
+    if (prev === null) await prisma.setting.delete({ where: { key: 'autonomy_mode' } }).catch(() => undefined);
+    else if (prev !== undefined) await prisma.setting.upsert({ where: { key: 'autonomy_mode' }, create: { key: 'autonomy_mode', value: prev }, update: { value: prev } });
+  } catch { /* best effort */ }
+console.error('Error fatal:', e); process.exit(1); });

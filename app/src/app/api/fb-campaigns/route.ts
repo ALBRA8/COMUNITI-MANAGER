@@ -225,7 +225,10 @@ export async function PATCH(req: NextRequest) {
   } else if (body.action === 'cancel') {
     if (campaign.status === 'CANCELLED') return NextResponse.json({ ok: true });
     await db.fbCampaign.update({ where: { id: campaign.id }, data: { status: 'CANCELLED' } });
-    await db.fbJob.updateMany({ where: { campaignId: campaign.id, status: { in: ['PENDING_APPROVAL', 'QUEUED', 'LEASED'] } }, data: { status: 'CANCELLED', leaseUntil: null } });
+    // F2-ARC-05: los leases EN VUELO no se revocan (filosofía igual que la
+    // pausa): el post en vuelo terminará y se reportará con honestidad; el
+    // guard de reportes ya ignora estados terminales si llegó tarde.
+    await db.fbJob.updateMany({ where: { campaignId: campaign.id, status: { in: ['PENDING_APPROVAL', 'QUEUED'] } }, data: { status: 'CANCELLED', leaseUntil: null } });
   } else if (body.action === 'pause') {
     if (campaign.status !== 'QUEUED' && campaign.status !== 'RUNNING') {
       return NextResponse.json({ error: `Solo se pausa una campaña en cola o en marcha (estado actual: ${campaign.status}); un borrador se aprueba o se cancela` }, { status: 409 });

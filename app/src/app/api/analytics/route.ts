@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { executeContract } from '@/lib/executor';
+import { guardPanel } from '@/lib/panel-auth';
 import { getAutonomyMode } from '@/lib/orchestrator';
 
 export const dynamic = 'force-dynamic';
@@ -29,6 +30,8 @@ export async function GET(req: NextRequest) {
 
 // Informe de rendimiento con recomendaciones justificadas
 export async function POST(req: NextRequest) {
+  const denied = guardPanel(req);
+  if (denied) return denied;
   const body = await req.json().catch(() => ({}));
   const { brandId } = body;
   if (!brandId) return NextResponse.json({ error: 'brandId requerido' }, { status: 400 });

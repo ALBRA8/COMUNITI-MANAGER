@@ -54,7 +54,7 @@ const sign = (raw, secret) => require('node:crypto').createHmac('sha256', secret
 
   // 3a) Campaña con adjuntos válidos (URL + ruta local)
   const mediaOk = ['https://example.com/foto-promo.jpg', '/tmp/local-imagen.png'];
-  const ok = await j('POST', '/api/fb-campaigns', { name: `MediaOK-${stamp}`, text: 'Texto de prueba {con|sin} spintax', mode: 'group', engine: 'dom', mediaUrls: mediaOk, targets: [group.id], windowStart: 0, windowEnd: 24, approve: true });
+  const ok = await j('POST', '/api/fb-campaigns', { name: `MediaOK-${stamp}`, text: 'Texto de prueba {con|sin} spintax', mode: 'group', engine: 'dom', mediaUrls: mediaOk, targets: [group.id], windowStart: 0, windowEnd: 24, nightOverride: true, approve: true });
   check('campaña con 2 adjuntos creada', ok.status === 200 && ok.data.campaign?.id, JSON.stringify(ok.data).slice(0, 120));
 
   // 3b) Exceso: 5 adjuntos → 400

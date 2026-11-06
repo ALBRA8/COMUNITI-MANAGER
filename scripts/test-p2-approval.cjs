@@ -38,6 +38,7 @@ async function text(path) {
   const { PrismaClient } = require('@prisma/client');
   const prisma = new PrismaClient();
   const prevAutonomy = (await prisma.setting.findUnique({ where: { key: 'autonomy_mode' } }))?.value ?? null;
+  globalThis.__prevAutonomy = prevAutonomy; // disponible también en el catch de salida temprana
   await prisma.setting.upsert({ where: { key: 'autonomy_mode' }, create: { key: 'autonomy_mode', value: 'L1_ASSISTED' }, update: { value: 'L1_ASSISTED' } });
   await prisma.$disconnect();
 
@@ -169,4 +170,10 @@ async function text(path) {
     else await prisma.setting.upsert({ where: { key: 'autonomy_mode' }, create: { key: 'autonomy_mode', value: prevAutonomy }, update: { value: prevAutonomy } });
   }
   process.exit(fail > 0 ? 1 : 0);
-})().catch((e) => { console.error('Fallo del runner:', e); process.exit(1); });
+})().catch(async (e) => {
+  try { // higiene también en salida temprana (F2-OPS-01)
+    const prev = globalThis.__prevAutonomy;
+    if (prev === null) await prisma.setting.delete({ where: { key: 'autonomy_mode' } }).catch(() => undefined);
+    else if (prev !== undefined) await prisma.setting.upsert({ where: { key: 'autonomy_mode' }, create: { key: 'autonomy_mode', value: prev }, update: { value: prev } });
+  } catch { /* best effort */ }
+console.error('Fallo del runner:', e); process.exit(1); });

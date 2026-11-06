@@ -169,6 +169,7 @@ export function MetaComplianceSection() {
   const load = useCallback(async () => {
     try {
       const res = await fetch('/api/meta-policy', { cache: 'no-store' });
+      if (!res.ok) return; // conserva el último estado bueno en pantalla
       const json: PolicyStateResponse = await res.json();
       setData(json);
       setExclusionsText((json.state.exclusions ?? []).join('\n'));
@@ -203,10 +204,10 @@ export function MetaComplianceSection() {
     setBusy(`report-${kind}`);
     try {
       const res = await fetch(`/api/meta-policy?report=${kind}`, { cache: 'no-store' });
-      if (!res.ok) { setReport(null); return; }
+      if (!res.ok) { return; }
       const json: PolicyReportData = await res.json();
       setReport(json.report);
-    } finally {
+    } catch { /* fallo de red: se conserva el informe ya mostrado */ } finally {
       setBusy('');
     }
   };

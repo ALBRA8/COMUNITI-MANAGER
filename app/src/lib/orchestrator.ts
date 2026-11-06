@@ -104,8 +104,12 @@ export async function runTask(taskId: string): Promise<{ status: TaskStatus; out
   const agent = agentByKey(task.agent);
   if (!agent) return { status: 'FAILED', error: `Agente ${task.agent} no definido` };
 
-  await setTask(taskId, 'RUNNING', { error: '' });
-  await db.task.update({ where: { id: taskId }, data: { attempts: { increment: 1 } } });
+  // CAS (F2-DATA-03): solo una ejecución gana la transición PENDING→RUNNING.
+  // Dos ticks solapados (o tick + panel) ya no ejecutan la misma tarea dos veces.
+  const claimedTask = await db.task.updateMany({ where: { id: taskId, status: 'PENDING' }, data: { status: 'RUNNING', attempts: { increment: 1 } } });
+  if (claimedTask.count === 0) {
+    return { status: task.status as TaskStatus, error: 'Tarea no estaba PENDING (ya en ejecución o cerrada): ejecución duplicada abortada' };
+  }
   await logEvent(taskId, task.phase, `Ejecutando ${task.type} con agente ${agent.name}`);
 
   const input = JSON.parse(task.inputJson || '{}');
