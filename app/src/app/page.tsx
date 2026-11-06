@@ -93,12 +93,25 @@ export default function Page() {
     return () => clearInterval(t);
   }, [refresh]);
 
+  const [toggling, setToggling] = useState(false);
   const togglePause = async () => {
-    await fetch('/api/harness', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: harness?.paused ? 'resume' : 'pause' }),
-    });
+    if (toggling) return; // F4-UX-01: sin doble disparo en el control de parada
+    setToggling(true);
+    try {
+      const res = await fetch('/api/harness', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: harness?.paused ? 'resume' : 'pause' }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(`La ${harness?.paused ? 'reanudación' : 'pausa global'} NO se aplicó: ${data.error ?? 'error del servidor'}. Revisa el estado real en el badge.`);
+      }
+    } catch {
+      alert('Fallo de red: la acción de pausa/reanudación no se confirmó. Revisa el badge de estado.');
+    } finally {
+      setToggling(false);
+    }
     refresh();
   };
 
@@ -134,7 +147,7 @@ export default function Page() {
             <Badge variant="outline" className="hidden md:inline-flex">
               Autonomía: {MODE_LABELS[harness?.autonomyMode ?? ''] ?? harness?.autonomyMode ?? '—'}
             </Badge>
-            <Button size="sm" variant={harness?.paused ? 'default' : 'outline'} onClick={togglePause}>
+            <Button size="sm" variant={harness?.paused ? 'default' : 'outline'} disabled={toggling} onClick={togglePause}>
               {harness?.paused ? <Play className="h-4 w-4 mr-1" /> : <Pause className="h-4 w-4 mr-1" />}
               {harness?.paused ? 'Reanudar' : 'Pausa global'}
             </Button>

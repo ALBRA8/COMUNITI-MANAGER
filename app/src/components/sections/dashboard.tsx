@@ -48,6 +48,7 @@ export function EmptyBrand({ text }: { text: string }) {
 export default function DashboardSection({ harness, brandId, refresh }: SectionProps) {
   const [cycle, setCycle] = useState<{ phases: { phase: string; status: string; summary: string }[]; stoppedAt?: string } | null>(null);
   const [running, setRunning] = useState(false);
+  const [cycleError, setCycleError] = useState('');
   const brand = harness?.brands.find((b) => b.id === brandId);
 
   useEffect(() => {
@@ -73,9 +74,18 @@ export default function DashboardSection({ harness, brandId, refresh }: SectionP
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ brandId }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setCycle(null);
+        setCycleError(data.error ?? 'El ciclo no pudo iniciarse (revisa el registro de errores).');
+        refresh();
+        return;
+      }
       setCycle(data);
+      setCycleError('');
       refresh();
+    } catch {
+      setCycleError('Fallo de red ejecutando el ciclo completo.');
     } finally {
       setRunning(false);
     }
@@ -125,6 +135,7 @@ export default function DashboardSection({ harness, brandId, refresh }: SectionP
               >
                 {running ? 'Ejecutando…' : 'Ejecutar ciclo completo'}
               </button>
+              {cycleError && <p className="text-xs text-destructive">{cycleError}</p>}
               {cycle?.stoppedAt && (
                 <Badge variant="outline">Detenido en: {cycle.stoppedAt}</Badge>
               )}

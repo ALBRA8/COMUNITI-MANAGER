@@ -294,6 +294,7 @@ interface ErrorRow { id: string; source: string; severity: string; message: stri
 
 export function ErrorsSection({ harness, brandId, refresh }: SectionProps) {
   const [errors, setErrors] = useState<ErrorRow[]>([]);
+  const [note, setNote] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -311,13 +312,16 @@ export function ErrorsSection({ harness, brandId, refresh }: SectionProps) {
   }, []);
 
   const resolve = async (id: string) => {
-    await fetch('/api/errors', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, resolved: true }) });
+    const res = await fetch('/api/errors', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, resolved: true }) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) setNote(data.error ?? 'No se pudo marcar como resuelto.');
     load(); refresh();
   };
 
   return (
     <div>
       <SectionHeader title="Registro de errores" description="Cada error guarda severidad, detalle y acción de recuperación sugerida." />
+      {note && <p className="text-xs text-muted-foreground mb-2">{note}</p>}
       <div className="space-y-2">
         {errors.length === 0 && <Card><CardContent className="py-6 text-center text-sm text-muted-foreground">Sin errores registrados.</CardContent></Card>}
         {errors.map((e) => (
@@ -397,8 +401,20 @@ export function SecuritySection({ harness, refresh }: SectionProps) {
     setAudit(await res.json());
   }, []);
 
+  const [modeBusy, setModeBusy] = useState(false);
+  const [modeNote, setModeNote] = useState('');
   const setMode = async (mode: string) => {
-    await fetch('/api/harness', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'set_mode', mode }) });
+    if (modeBusy) return; // F4-UX-02: control de seguridad sin fallos silenciosos
+    setModeBusy(true);
+    try {
+      const res = await fetch('/api/harness', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'set_mode', mode }) });
+      const data = await res.json().catch(() => ({}));
+      setModeNote(res.ok ? `Modo cambiado a ${mode} (auditado).` : (data.error ?? 'El cambio de modo no se aplicó.'));
+    } catch {
+      setModeNote('Fallo de red: el cambio de modo no se confirmó.');
+    } finally {
+      setModeBusy(false);
+    }
     refresh();
   };
 
@@ -411,6 +427,7 @@ export function SecuritySection({ harness, refresh }: SectionProps) {
   return (
     <div>
       <SectionHeader title="Configuración de seguridad" description="Autonomía ≠ permiso: ningún agente puede eludir el firewall, la pausa global o las aprobaciones." />
+      {modeNote && <p className="text-xs text-muted-foreground mb-2">{modeNote}</p>}
       <div className="grid gap-3 md:grid-cols-3 mb-4">
         {MODES.map((m) => (
           <Card key={m.id} className={harness?.autonomyMode === m.id ? 'border-primary' : ''}>

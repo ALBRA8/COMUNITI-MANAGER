@@ -20,8 +20,8 @@ export async function POST(req: NextRequest) {
   // por otro claim (post o join en vuelo); telemetría coherente con el panel.
   const current = await db.fbWorker.findUnique({ where: { id: verification.worker.id }, select: { status: true } });
   const nextStatus = paused ? pausedStatus : result.jobs.length > 0 ? 'RUNNING' : current?.status === 'RUNNING' ? 'RUNNING' : 'IDLE';
-  await db.fbWorker.update({
-    where: { id: verification.worker.id },
+  await db.fbWorker.updateMany({
+    where: { id: verification.worker.id, status: current?.status ?? '' },
     data: { lastSeenAt: new Date(), status: nextStatus },
   }).catch(() => undefined);
 

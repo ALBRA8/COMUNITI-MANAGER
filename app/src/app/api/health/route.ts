@@ -16,13 +16,14 @@ export async function GET() {
     await db.$queryRaw`SELECT 1`;
     dbOk = true;
   } catch (e) {
-    dbError = (e as Error).message.slice(0, 200);
+    dbError = 'error'; // sin detalle al cliente (F4-SEC-02): rutas del FS no se filtran
+    console.error('[health] DB:', (e as Error).message);
   }
   const scheduler = schedulerLoopState();
   const ok = dbOk;
   return NextResponse.json({
     ok,
-    db: dbOk ? 'ok' : `error: ${dbError}`,
+    db: dbOk ? 'ok' : dbError,
     scheduler: { active: scheduler.active, lastTick: scheduler.lastTick },
     panelAuth: panelAuthEnabled() ? 'token' : 'local',
     uptimeSec: Math.round(process.uptime()),

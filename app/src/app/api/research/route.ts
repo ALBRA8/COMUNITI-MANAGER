@@ -24,6 +24,9 @@ export async function POST(req: NextRequest) {
     : { topic };
 
   const task = await createTask(brandId, contract.toUpperCase(), 'RESEARCH', competitorHandle ? 'researcher' : 'researcher', payload);
+  // F4-DATA-03: nextRetryAt due desde el nacimiento — si el proceso muere a
+  // mitad del request, la tarea no queda zombie PENDING eterna (el sweep la
+  // despacha; runTask CAS evita dobles ejecuciones).
 
   const res = await executeContract(contract, payload, { agent: 'researcher', brandId, taskId: task.id });
 
@@ -41,6 +44,7 @@ export async function POST(req: NextRequest) {
     evidenceId = ev.id;
   }
 
+  try {
   const output = {
     outcome: res.outcome,
     data: res.data ?? null,
@@ -49,6 +53,10 @@ export async function POST(req: NextRequest) {
   };
   await db.task.update({ where: { id: task.id }, data: { status: res.outcome === 'OK' ? 'COMPLETED' : 'FAILED', outputJson: JSON.stringify(output), errorDetail: res.reason ?? '' } });
   return NextResponse.json({ taskId: task.id, evidenceId, ...output });
+  } catch (e) {
+    await db.task.update({ where: { id: task.id }, data: { status: 'FAILED', errorDetail: `Fallo escribiendo el resultado: ${(e as Error).message.slice(0, 180)}` } }).catch(() => undefined);
+    throw e;
+  }
 }
 
 export async function GET(req: NextRequest) {

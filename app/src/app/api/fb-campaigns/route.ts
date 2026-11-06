@@ -237,7 +237,10 @@ export async function PATCH(req: NextRequest) {
     if (campaign.status !== 'QUEUED' && campaign.status !== 'RUNNING') {
       return NextResponse.json({ error: `Solo se pausa una campaña en cola o en marcha (estado actual: ${campaign.status}); un borrador se aprueba o se cancela` }, { status: 409 });
     }
-    await db.fbCampaign.update({ where: { id: campaign.id }, data: { status: 'PAUSED' } });
+    // CAS (F4-DATA-01): la pausa solo procede desde el estado activo leído; un
+    // cancel concurrente ya no puede ser pisado por este write.
+    const paused = await db.fbCampaign.updateMany({ where: { id: campaign.id, status: { in: ['QUEUED', 'RUNNING'] } }, data: { status: 'PAUSED' } });
+    if (paused.count === 0) return NextResponse.json({ error: `La campaña ya no está activa (otra acción la cerró)` }, { status: 409 });
     // F-DATA-08: los leases EN VUELO ya están ejecutándose en el worker; sacarlos
     // de lease y reencolarlos habilitaba el doble disparo que el lease evita.
     // La pausa solo impide NUEVOS claims; el job en vuelo termina su ciclo y se
@@ -246,7 +249,9 @@ export async function PATCH(req: NextRequest) {
     if (campaign.status !== 'PAUSED') {
       return NextResponse.json({ error: `Solo se reanuda una campaña pausada (estado actual: ${campaign.status})` }, { status: 409 });
     }
-    await db.fbCampaign.update({ where: { id: campaign.id }, data: { status: 'QUEUED' } });
+    // CAS (F4-DATA-01): reanudar solo desde PAUSED real.
+    const resumed = await db.fbCampaign.updateMany({ where: { id: campaign.id, status: 'PAUSED' }, data: { status: 'QUEUED' } });
+    if (resumed.count === 0) return NextResponse.json({ error: 'La campaña ya no está pausada' }, { status: 409 });
   } else {
     return NextResponse.json({ error: 'Acción no soportada' }, { status: 400 });
   }

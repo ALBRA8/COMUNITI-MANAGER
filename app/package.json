@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev -p 3000 2>&1 | tee dev.log",
     "build": "next build && cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/ && mkdir -p .next/standalone/prisma/db && cp prisma/schema.prisma .next/standalone/prisma/ && (cp prisma/db/harness.db .next/standalone/prisma/db/ 2>/dev/null || echo \"[build] sin DB previa: el standalone creará una vacía\")",
-    "start": "NODE_ENV=production bun .next/standalone/server.js 2>&1 | tee server.log",
+    "start": "bash -o pipefail -c 'NODE_ENV=production bun .next/standalone/server.js 2>&1 | tee server.log'",
     "lint": "eslint .",
     "db:push": "prisma db push --accept-data-loss",
     "db:generate": "prisma generate",

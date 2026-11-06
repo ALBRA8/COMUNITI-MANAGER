@@ -12,9 +12,10 @@ Next.js 16 (App Router) · TypeScript strict · Prisma 6 + SQLite · Tailwind/sh
 ## Desarrollo
 
 ```bash
+cd app
 bun install
 bun run dev            # http://localhost:3000
-cd app && npx prisma db push  # aplica app/prisma/schema.prisma a app/prisma/db/harness.db
+npx prisma db push     # aplica app/prisma/schema.prisma a app/prisma/db/harness.db
 ```
 
 ## Pruebas (8 baterías, se corren contra un dev server en :3000)
@@ -41,6 +42,7 @@ npx tsc --noEmit && npm run lint
 ## Producción
 
 ```bash
+cd app
 bun run build   # genera .next/standalone y copia prisma/ (schema + DB) dentro
 bun run start   # NODE_ENV=production bun .next/standalone/server.js
 curl -s localhost:3000/api/health   # {"ok":true, db:"ok", scheduler:{active:true,...}}
@@ -63,7 +65,7 @@ curl -s localhost:3000/api/health   # {"ok":true, db:"ok", scheduler:{active:tru
 
 ## Convenciones de la casa
 
-- Motor de 6 estados (PERMITIDO … POLITICA_DESACTUALIZADO) consultado antes de
+- Motor de 6 estados (PERMITIDO … POLITICA_DESACTUALIZADA) consultado antes de
   aceptar/aprobar/reclamar cualquier publicación.
 - HITL: las campañas nacen borrador; el worker no ve nada sin aprobación humana.
 - Auditoría append-only; sin URL viva no hay éxito; la IA no desactiva

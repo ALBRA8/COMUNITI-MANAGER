@@ -615,7 +615,9 @@ export async function applyWorkerReport(
     const pending = await db.fbJob.count({ where: { campaignId: c.id, status: { in: ['QUEUED', 'LEASED'] } } });
     if (pending === 0) {
       const review = await db.fbJob.count({ where: { campaignId: c.id, status: 'PENDING_REVIEW' } });
-      await db.fbCampaign.update({ where: { id: c.id }, data: { status: 'DONE' } });
+      // CAS (F4-DATA-01): solo RUNNING→DONE; nunca se pisa un CANCELLED.
+      const doneCas = await db.fbCampaign.updateMany({ where: { id: c.id, status: 'RUNNING' }, data: { status: 'DONE' } });
+      if (doneCas.count === 0) continue;
       await audit('FB_CAMPAIGN_DONE', 'FB_CAMPAIGN', c.id, `Campaña "${c.name}" terminada${review > 0 ? ` (${review} job(s) quedaron PENDING_REVIEW: publicados y a espera de aprobación del admin del grupo)` : ''}`);
       done += 1;
     }

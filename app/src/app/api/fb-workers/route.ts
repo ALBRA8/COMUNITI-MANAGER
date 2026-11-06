@@ -100,7 +100,12 @@ export async function POST(req: NextRequest) {
     }
     const status = typeof body.status === 'string' ? body.status : 'IDLE';
     const allowed = ['OFFLINE', 'IDLE', 'RUNNING', 'AWAITING_SESSION', 'PAUSED_ANTI_BAN', 'CHALLENGE_DETECTED'];
-    await db.fbWorker.update({ where: { id: worker.id }, data: { status: allowed.includes(status) ? status : 'IDLE', lastSeenAt: new Date() } });
+    // F4-DATA-02: un heartbeat no borra los estados defensivos (CHALLENGE/
+    // PAUSED_ANTI_BAN) — solo un reporte con alerta propia puede transicionarlos.
+    const cur = await db.fbWorker.findUnique({ where: { id: worker.id }, select: { status: true } });
+    const defensive = cur?.status === 'CHALLENGE_DETECTED' || cur?.status === 'PAUSED_ANTI_BAN';
+    const nextStatus = defensive && !['CHALLENGE_DETECTED', 'PAUSED_ANTI_BAN'].includes(status) ? (cur?.status ?? 'IDLE') : allowed.includes(status) ? status : 'IDLE';
+    await db.fbWorker.update({ where: { id: worker.id }, data: { status: nextStatus, lastSeenAt: new Date() } });
     return NextResponse.json({ ok: true });
   }
 
