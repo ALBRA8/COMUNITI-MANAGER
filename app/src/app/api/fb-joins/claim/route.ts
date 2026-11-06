@@ -17,8 +17,11 @@ export async function POST(req: NextRequest) {
   const pausedStatus = result.pausedKind === 'CHALLENGE' ? 'CHALLENGE_DETECTED' : 'PAUSED_ANTI_BAN';
   const current = await db.fbWorker.findUnique({ where: { id: verification.worker.id }, select: { status: true } });
   const nextStatus = paused ? pausedStatus : result.task ? 'RUNNING' : (current?.status === 'RUNNING' ? 'RUNNING' : 'IDLE');
-  await db.fbWorker.update({
-    where: { id: verification.worker.id },
+  // CAS (F5-DATA-02): mismo patrón que fb-jobs/claim — el write solo procede
+  // si el estado no cambió desde la lectura (un reporte con alerta CHALLENGE en
+  // el tick paralelo del worker no puede ser borrado por este claim).
+  await db.fbWorker.updateMany({
+    where: { id: verification.worker.id, status: current?.status ?? '' },
     data: { lastSeenAt: new Date(), status: nextStatus },
   }).catch(() => undefined);
 

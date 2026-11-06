@@ -71,6 +71,7 @@ export async function recoverInterrupted() {
     const canRetry = t.attempts < t.maxAttempts;
     await setTask(t.id, canRetry ? 'PENDING' : 'FAILED', {
       error: canRetry ? 'Interrumpida por reinicio; programada para reintento' : 'Interrumpida por reinicio; agotó reintentos',
+      nextRetryAt: canRetry ? new Date() : undefined, // F5-DATA-01: due inmediato, el sweep la despacha
     });
     await logEvent(t.id, t.phase, canRetry ? 'Tarea interrumpida → reintento' : 'Tarea interrumpida → fallida para revisión');
   }

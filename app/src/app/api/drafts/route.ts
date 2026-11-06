@@ -67,12 +67,20 @@ export async function PATCH(req: NextRequest) {
   const { versionId, text } = body;
   const version = await db.postVersion.findUnique({ where: { id: versionId }, include: { draft: true } });
   if (!version) return NextResponse.json({ error: 'Versión no encontrada' }, { status: 404 });
+  // F5-API-04: una versión ya publicada es registro, no borrador — no se
+  // reescribe en silencio (la verdad de cada entrega vive en la auditoría).
+  if (['PUBLISHED', 'SCHEDULED', 'APPROVED'].includes(version.draft.status)) {
+    return NextResponse.json({ error: `El borrador ya está ${version.draft.status}: su texto publicado no se edita` }, { status: 409 });
+  }
   const memory = await loadBrandMemory(version.draft.brandId);
   if (!memory) return NextResponse.json({ error: 'Marca no encontrada' }, { status: 404 });
   const check = validateContent(memory, version.network as Network, text);
   const updated = await db.postVersion.update({
     where: { id: versionId },
     data: { text, specCheck: JSON.stringify(check) },
+  });
+  await db.auditEntry.create({
+    data: { actor: 'human', action: 'DRAFT_VERSION_EDITED', targetType: 'ContentDraft', targetId: version.draftId, allowed: true, reason: `Versión ${version.network} editada y revalidada (${check.ok ? 'sin incidencias' : `${(check.issues ?? []).length} incidencia(s))`})` },
   });
   return NextResponse.json({ version: updated, validation: check });
 }

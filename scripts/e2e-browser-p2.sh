@@ -2,7 +2,7 @@
 # Recorrido E2E en navegador del módulo FB-GROUPS sobre build de PRODUCCIÓN (v2).
 # Formato real del snapshot: `texto "label" [ref=eX]` → extraer ref=eX → @eX.
 set -u
-cd /home/z/my-project
+cd "$(git -C "$(dirname "${BASH_SOURCE[0]}")/.." rev-parse --show-toplevel 2>/dev/null || echo "$(dirname "${BASH_SOURCE[0]}")/..")"
 CAP=clones/COMUNITI-MANAGER/docs/capturas
 
 ./node_modules/.bin/next start -p 3000 > /tmp/prod-server.log 2>&1 &

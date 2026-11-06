@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Recaptura dirigida: calendario P8 del módulo y heatmap P10 (textos únicos del módulo)
 set -u
-cd /home/z/my-project
+cd "$(git -C "$(dirname "${BASH_SOURCE[0]}")/.." rev-parse --show-toplevel 2>/dev/null || echo "$(dirname "${BASH_SOURCE[0]}")/..")"
 CAP=clones/COMUNITI-MANAGER/docs/capturas
 
 ./node_modules/.bin/next start -p 3000 > /tmp/prod-server.log 2>&1 &

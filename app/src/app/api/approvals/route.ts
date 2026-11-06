@@ -19,15 +19,20 @@ export async function POST(req: NextRequest) {
   if (!id || !['APPROVED', 'REJECTED'].includes(decision)) {
     return NextResponse.json({ error: 'id y decision (APPROVED|REJECTED) requeridos' }, { status: 400 });
   }
-  let approval;
-  try {
-    approval = await db.approval.update({
-      where: { id },
-      data: { status: decision, decidedBy: 'human', reason: reason ?? '', decidedAt: new Date() },
-    });
-  } catch {
-    return NextResponse.json({ error: 'Aprobación no encontrada' }, { status: 404 });
+  // CAS (F5-API-03): solo una decisión PENDING→terminal gana; re-decidir una
+  // cerrada devuelve 409 y ya no re-aplica efectos laterales (p.ej. un REJECTED
+  // tardío no puede pisar un draft ya PUBLISHED por la aprobación original).
+  const decided = await db.approval.updateMany({
+    where: { id, status: 'PENDING' },
+    data: { status: decision, decidedBy: 'human', reason: reason ?? '', decidedAt: new Date() },
+  });
+  if (decided.count === 0) {
+    const exists = await db.approval.findUnique({ where: { id }, select: { id: true, status: true } });
+    if (!exists) return NextResponse.json({ error: 'Aprobación no encontrada' }, { status: 404 });
+    return NextResponse.json({ error: `La aprobación ya fue decidida (estado: ${exists.status})` }, { status: 409 });
   }
+  const approval = await db.approval.findUnique({ where: { id } });
+  if (!approval) return NextResponse.json({ error: 'Aprobación no encontrada' }, { status: 404 });
   await db.auditEntry.create({
     data: {
       actor: 'human',

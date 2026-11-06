@@ -20,10 +20,11 @@ npx prisma db push     # aplica app/prisma/schema.prisma a app/prisma/db/harness
 
 ## Pruebas (8 baterías, se corren contra un dev server en :3000)
 
-> Nota: corre las baterías desde un árbol donde `scripts/` esté junto a `src/`
-> (como el workspace de desarrollo). En este repo la app vive en `app/`; el
-> runner ya resuelve la raíz automáticamente, pero `test-besttime.ts` usa un
-> import relativo a `../src` que asume esa disposición.
+> Nota: en este repo la app vive en `app/` y `scripts/` en la raíz; el runner
+> resuelve la raíz del server automáticamente, pero los comandos de batería
+> asumen la disposición del workspace de desarrollo (scripts/ junto a src/).
+> En el repo entregado, corre las baterías desde `app/` con `TEST_BASE` apuntando
+> al server y ajusta el import relativo de `test-besttime.ts`, o usa el workspace.
 
 ```bash
 bash scripts/run-with-server.sh \

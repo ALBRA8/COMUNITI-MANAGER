@@ -24,9 +24,11 @@ export async function POST(req: NextRequest) {
     : { topic };
 
   const task = await createTask(brandId, contract.toUpperCase(), 'RESEARCH', competitorHandle ? 'researcher' : 'researcher', payload);
-  // F4-DATA-03: nextRetryAt due desde el nacimiento — si el proceso muere a
-  // mitad del request, la tarea no queda zombie PENDING eterna (el sweep la
-  // despacha; runTask CAS evita dobles ejecuciones).
+  // F5-DATA-01: nextRetryAt due desde el nacimiento — si el proceso muere a
+  // mitad del request, el sweep la despacha (runTask CAS evita dobles
+  // ejecuciones). Sin esto, PENDING con nextRetryAt null jamás casa en el
+  // filtro nextRetryAt lte now y queda zombie para siempre.
+  await db.task.update({ where: { id: task.id }, data: { nextRetryAt: new Date() } });
 
   const res = await executeContract(contract, payload, { agent: 'researcher', brandId, taskId: task.id });
 
