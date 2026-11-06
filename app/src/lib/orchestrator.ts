@@ -65,7 +65,14 @@ export async function getAutonomyMode(): Promise<string> {
 // ─── Reanudación tras reinicio (recuperación ante fallos) ─────────
 
 export async function recoverInterrupted() {
-  const orphaned = await db.task.findMany({ where: { status: 'RUNNING' } });
+  // F7-MOTOR-01: solo se recuperan tareas RUNNING VIEJAS (gracia de 120 s).
+  // Sin el periodo de gracia, cualquier runFullCycle re-encolaba tareas RUNNING
+  // vivas (p.ej. la ejecución inline de /api/research, maxDuration 60 s) y el
+  // sweep las re-ejecutaba en paralelo. Una tarea viva no escribe su fila
+  // durante la ejecución, así que updatedAt queda en el instante del claim:
+  // pasado el periodo, un crash real SÍ se recupera.
+  const grace = new Date(Date.now() - 120_000);
+  const orphaned = await db.task.findMany({ where: { status: 'RUNNING', updatedAt: { lt: grace } } });
   for (const t of orphaned) {
     // Tarea interrumpida por reinicio: reintentos idempotentes → PENDING; resto → revisión
     const canRetry = t.attempts < t.maxAttempts;
