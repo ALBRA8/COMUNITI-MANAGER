@@ -26,8 +26,10 @@ npx prisma db push     # aplica app/prisma/schema.prisma a app/prisma/db/harness
 > En el repo entregado, corre las baterías desde `app/` con `TEST_BASE` apuntando
 > al server y ajusta el import relativo de `test-besttime.ts`, o usa el workspace.
 >
-> Los scripts de navegador (`e2e-browser-p2.sh`, `recap-browser.sh` y el arnés
-> agéntico `agent-browser-e2e.cjs`) son herramientas del workspace de
+> Los scripts de navegador (`e2e-browser-p2.sh`, `recap-browser.sh`, el arnés
+> agéntico `agent-browser-e2e.cjs` y las capturas del panel `capturas-panel.cjs`
+> con su siembra/limpieza demo `demo-seed-panel.cjs`/`demo-cleanup-panel.cjs`)
+> son herramientas del workspace de
 > desarrollo: asumen node_modules (y, el arnés, un Playwright global) y la
 > disposición de ese árbol; no forman parte del pipeline. El arnés aplica los
 > patrones del destripe browser-use (docs/research/BROWSER_USE_DESTRIPE.md):
