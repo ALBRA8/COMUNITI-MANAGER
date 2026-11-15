@@ -345,42 +345,6 @@ export function ErrorsSection({ harness, brandId, refresh }: SectionProps) {
   );
 }
 
-// ─── Costes y límites ─────────────────────────────────────────────
-
-export function CostsSection({ harness, brandId }: SectionProps) {
-  const brand = harness?.brands.find((b) => b.id === brandId);
-  return (
-    <div>
-      <SectionHeader title="Costes y límites" description="Presupuesto por marca, límites de frecuencia y coste estimado de cada proveedor." />
-      <div className="grid gap-3 md:grid-cols-2">
-        <Card>
-          <CardHeader className="pb-1"><CardTitle className="text-sm">Límites de la marca activa</CardTitle></CardHeader>
-          <CardContent className="text-xs space-y-1">
-            {brand ? (
-              <>
-                <p>Máximo de publicaciones por día: <b>{brand.maxPostsPerDay}</b></p>
-                <p>Horario permitido: <b>{brand.allowedHours}</b></p>
-                <p className="text-muted-foreground">El planificador y el publicador rechazan acciones fuera de estos límites.</p>
-              </>
-            ) : <p className="text-muted-foreground">Selecciona una marca.</p>}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-1"><CardTitle className="text-sm">Coste estimado por herramienta</CardTitle></CardHeader>
-          <CardContent className="text-xs space-y-1">
-            {harness?.tools.map((t) => (
-              <div key={t.key} className="flex justify-between gap-2 border-b border-border/40 pb-1">
-                <span className="truncate">{t.provider}</span>
-                <span className="text-muted-foreground shrink-0">{t.costNote || 'Sin coste documentado'}</span>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      </div>
-    </div>
-  );
-}
-
 // ─── Configuración de seguridad ───────────────────────────────────
 
 export function SecuritySection({ harness, refresh }: SectionProps) {

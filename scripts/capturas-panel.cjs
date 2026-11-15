@@ -27,11 +27,10 @@ const SECCIONES = [
   ['02-canales.png', 'Canales', 'Telegram'],
   ['03-ajustes-integraciones.png', 'Ajustes e integraciones', 'Canales de publicación'],
   ['04-marcas-y-cuentas.png', 'Marcas y cuentas', null],
-  ['05-agentes.png', 'Agentes', null],
-  ['06-grupos-de-facebook.png', 'Grupos de Facebook', null],
-  ['07-centro-cumplimiento-meta.png', 'Centro de Cumplimiento Meta', null],
-  ['08-automatizaciones.png', 'Automatizaciones', null],
-  ['09-calendario-editorial.png', 'Calendario editorial', null],
+  ['05-grupos-de-facebook.png', 'Grupos de Facebook', null],
+  ['06-centro-cumplimiento-meta.png', 'Centro de Cumplimiento Meta', null],
+  ['07-automatizaciones.png', 'Automatizaciones', null],
+  ['08-calendario-editorial.png', 'Calendario editorial', null],
 ];
 
 (async () => {

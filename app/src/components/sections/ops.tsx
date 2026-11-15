@@ -1,6 +1,10 @@
 'use client';
 
-// Secciones: Agentes + Herramientas e integraciones + Automatizaciones
+// Secciones: Herramientas e integraciones + Automatizaciones
+// (P19-LIMPIEZA-02: la vista 'Agentes' se eliminó por directiva del operador
+// — era documentación de arquitectura sin acción posible; el estado operativo
+// real de cada herramienta vive en 'Herramientas e integraciones', plegada en
+// Ajustes.)
 
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,48 +13,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { SectionHeader, EmptyBrand } from '@/components/sections/dashboard';
 import type { SectionProps } from '@/app/page';
-
-// ─── Agentes ──────────────────────────────────────────────────────
-
-export function AgentsSection({ harness }: SectionProps) {
-  return (
-    <div>
-      <SectionHeader title="Agentes" description="14 agentes especializados del arnés + agentes del ecosistema ALBRA que no se duplican: se coordinan." />
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {harness?.agents.map((a) => (
-          <Card key={a.key}>
-            <CardHeader className="pb-1">
-              <CardTitle className="text-sm">{a.name}</CardTitle>
-              <CardDescription>{a.role}</CardDescription>
-            </CardHeader>
-            <CardContent className="text-xs space-y-1.5">
-              <div className="flex flex-wrap gap-1">
-                {a.allowedContracts.map((c) => (
-                  <Badge key={c} variant="outline" className="text-[10px]">{c}</Badge>
-                ))}
-              </div>
-              <p className="text-muted-foreground">Límite: {a.limits}</p>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-      <Card className="mt-4">
-        <CardHeader className="pb-1"><CardTitle className="text-sm">Ecosistema ALBRA (sin duplicación)</CardTitle>
-        <CardDescription>Estos agentes ya cubren capacidades que el arnés NO reimplementa: el arnés orquesta y consume.</CardDescription></CardHeader>
-        <CardContent className="text-xs grid gap-1.5 md:grid-cols-2">
-          <p><b>AGENTE-CHISMOSO</b> — escucha social, tendencias y oportunidades (malla de eventos).</p>
-          <p><b>CRM-ALBRA</b> — mensajería entrante, CRM y handoff humano; el arnés actúa como su host.</p>
-          <p><b>AGENTE-LEADS</b> — prospección B2B y outreach 1:1 con evidencia.</p>
-          <p><b>WHATSPOWER-ULTRA</b> — difusión masiva WhatsApp con escudo anti-ban.</p>
-          <p><b>AGENTE-KREA</b> — generación de imágenes, voz y ebooks.</p>
-          <p><b>YOUTUBE-AUTOMATION</b> — fábrica de vídeo y autopublish YouTube.</p>
-          <p><b>NEX-SCOPE</b> — investigación de nichos y planes de contenido YouTube.</p>
-          <p><b>AGENTE-GENERAL</b> — semilla universal: runtime, memoria, seguridad y auditoría.</p>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
 
 // ─── Herramientas ─────────────────────────────────────────────────
 

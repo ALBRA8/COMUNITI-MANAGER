@@ -11,7 +11,7 @@ import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
 import {
   LayoutDashboard, Users, CalendarDays, Inbox, BadgeCheck, PenTool,
-  Search, BarChart3, Bot, Workflow, History, Wallet,
+  Search, BarChart3, Workflow, History,
   Pause, Play, UsersRound, Gavel, Settings, Sun, Moon, RadioTower,
 } from 'lucide-react';
 
@@ -20,8 +20,8 @@ import { BrandsSection, CalendarSection } from '@/components/sections/brands-cal
 import { CommunitySection, ApprovalsSection } from '@/components/sections/inbox-approvals';
 import { CreationSection, MediaSection } from '@/components/sections/creation';
 import { ResearchSection, CompetitorsSection, AnalyticsSection } from '@/components/sections/research-analytics';
-import { AgentsSection, ToolsSection, AutomationsSection } from '@/components/sections/ops';
-import { MemorySection, HistorySection, ErrorsSection, CostsSection, SecuritySection } from '@/components/sections/memory-history';
+import { ToolsSection, AutomationsSection } from '@/components/sections/ops';
+import { MemorySection, HistorySection, ErrorsSection, SecuritySection } from '@/components/sections/memory-history';
 import { MetaComplianceSection } from '@/components/sections/meta-compliance';
 import { FbGroupsSection } from '@/components/sections/fb-groups';
 import { SettingsSection } from '@/components/sections/settings';
@@ -43,13 +43,17 @@ export interface SectionProps {
   refresh: () => void;
 }
 
-// Navegación minimalista (P19-LIMPIEZA): 16 ítems en 5 grupos con orden de
-// misión — Panel, Canales (Telegram incluido), Contenido, Operación, Sistema.
-// Las vistas secundarias NO desaparecen: se pliegan dentro de su vista madre
-// (biblioteca→creación, memoria→marcas, competidores→investigación,
-// herramientas+seguridad→ajustes, errores→historial). Los nombres de
-// 'Grupos de Facebook' y 'Centro de Cumplimiento Meta' son invariantes que
-// el arnés agéntico de QA usa como anclas — no renombrar.
+// Navegación minimalista (P19-LIMPIEZA): 14 ítems en 5 grupos con orden de
+// misión — Panel, Canales (Telegram primero), Contenido, Operación, Sistema.
+// Recorte P19-LIMPIEZA-02 por directiva del operador: fuera 'Agentes'
+// (documentación interna de arquitectura, sin acción posible) y 'Límites y
+// costes' (pasiva; los límites reales los aplica el motor y se ven en la
+// marca y en el Centro de Cumplimiento Meta). Las vistas secundarias NO
+// desaparecen: se pliegan dentro de su vista madre (biblioteca→creación,
+// memoria→marcas, competidores→investigación, herramientas+seguridad→ajustes,
+// errores→historial). Los nombres de 'Grupos de Facebook' y 'Centro de
+// Cumplimiento Meta' son invariantes que el arnés agéntico de QA usa como
+// anclas — no renombrar.
 const NAV = [
   { id: 'dashboard', label: 'Resumen ejecutivo', icon: LayoutDashboard, group: 'Panel' },
   { id: 'brands', label: 'Marcas y cuentas', icon: Users, group: 'Panel' },
@@ -61,12 +65,10 @@ const NAV = [
   { id: 'inbox', label: 'Comentarios y mensajes', icon: Inbox, group: 'Contenido' },
   { id: 'research', label: 'Investigación', icon: Search, group: 'Contenido' },
   { id: 'automations', label: 'Automatizaciones', icon: Workflow, group: 'Operación' },
-  { id: 'agents', label: 'Agentes', icon: Bot, group: 'Operación' },
   { id: 'analytics', label: 'Analítica', icon: BarChart3, group: 'Operación' },
   { id: 'metacompliance', label: 'Centro de Cumplimiento Meta', icon: Gavel, group: 'Sistema' },
   { id: 'settings', label: 'Ajustes e integraciones', icon: Settings, group: 'Sistema' },
   { id: 'history', label: 'Historial y errores', icon: History, group: 'Sistema' },
-  { id: 'costs', label: 'Límites y costes', icon: Wallet, group: 'Sistema' },
 ];
 
 const MODE_LABELS: Record<string, string> = {
@@ -189,7 +191,7 @@ export default function Page() {
                       const Icon = item.icon;
                       const badge =
                         item.id === 'approvals' ? harness?.alerts.pendingApprovals :
-                        item.id === 'errors' ? harness?.alerts.unresolvedErrors : 0;
+                        item.id === 'history' ? harness?.alerts.unresolvedErrors : 0;
                       return (
                         <button
                           key={item.id}
@@ -298,7 +300,6 @@ export default function Page() {
               </div>
             )
             : active === 'automations' ? <AutomationsSection harness={harness} brandId={brandId} refresh={refresh} />
-            : active === 'agents' ? <AgentsSection harness={harness} brandId={brandId} refresh={refresh} />
             : active === 'analytics' ? <AnalyticsSection harness={harness} brandId={brandId} refresh={refresh} />
             : active === 'metacompliance' ? <MetaComplianceSection />
             : active === 'settings' ? (
@@ -314,7 +315,6 @@ export default function Page() {
                 <ErrorsSection harness={harness} brandId={brandId} refresh={refresh} />
               </div>
             )
-            : active === 'costs' ? <CostsSection harness={harness} brandId={brandId} refresh={refresh} />
             : null}
               </div>
             )}

@@ -45,16 +45,6 @@ interface CanalDef {
 
 const CANALES: CanalDef[] = [
   {
-    id: 'fbgroups',
-    nombre: 'Grupos de Facebook',
-    redes: ['facebook'],
-    herramientas: ['fbgroups.worker'],
-    via: 'Worker propio: Chrome real con tu sesión (PC o VPS). Única vía viable desde que Meta eliminó la API de Grupos (22/04/2024).',
-    uso: 'Campañas HITL en grupos: variantes por grupo con spintax, warmup, primer comentario y pausa defensiva.',
-    nota: 'Riesgo de restricción declarado en la FICHA del módulo; techo por warmup (5/10/20 según antigüedad) aplicado por el motor.',
-    accion: { label: 'Ir al módulo de Facebook', nav: 'fbgroups' },
-  },
-  {
     id: 'telegram',
     nombre: 'Telegram (canales y grupos)',
     redes: ['telegram'],
@@ -70,6 +60,30 @@ const CANALES: CanalDef[] = [
     ],
   },
   {
+    id: 'whatsapp',
+    nombre: 'WhatsApp',
+    redes: [],
+    herramientas: ['whatspower.broadcast'],
+    via: 'Ecosistema ALBRA: WhatsPower-ULTRA gobierna el despacho con escudo anti-ban de 5 capas; el chaleco crea campañas y audiencias.',
+    uso: 'Difusión masiva operada por el ecosistema; las conversaciones 1-a-1 viven en CRM-ALBRA (Comentarios y mensajes).',
+    nota: 'El QR no se escanea en este panel: la sesión de WhatsApp se vincula en la consola del daemon de WhatsApp de CRM-ALBRA (protocolo WhatsApp Web), que muestra el QR para escanearlo con el móvil. Este panel se conecta a ese daemon, nunca envía directo.',
+    pasos: [
+      'Levanta el daemon de WhatsApp de CRM-ALBRA y escanea con tu móvil el QR que muestra su consola.',
+      'Apunta WHATPOWER_URL (Ajustes e integraciones o .env) a la URL del daemon y reinicia el server.',
+      'Pulsa Probar aquí: si responde, la vía WhatsApp queda Conectada.',
+    ],
+  },
+  {
+    id: 'fbgroups',
+    nombre: 'Grupos de Facebook',
+    redes: ['facebook'],
+    herramientas: ['fbgroups.worker'],
+    via: 'Worker propio: Chrome real con tu sesión (PC o VPS). Única vía viable desde que Meta eliminó la API de Grupos (22/04/2024).',
+    uso: 'Campañas HITL en grupos: variantes por grupo con spintax, warmup, primer comentario y pausa defensiva.',
+    nota: 'Riesgo de restricción declarado en la FICHA del módulo; techo por warmup (5/10/20 según antigüedad) aplicado por el motor.',
+    accion: { label: 'Ir al módulo de Facebook', nav: 'fbgroups' },
+  },
+  {
     id: 'igfb',
     nombre: 'Instagram y Facebook (vías API)',
     redes: ['instagram', 'facebook'],
@@ -77,15 +91,6 @@ const CANALES: CanalDef[] = [
     via: 'Vía API multi-red: Postgale (SaaS) o Postiz self-host (AGPL-3.0). Instagram exige cuenta profesional vinculada en la vía.',
     uso: 'Publicación y programación en Instagram, Facebook (Páginas), Threads, TikTok y más desde una sola cuenta de la vía.',
     nota: 'Sin la vía conectada, el ciclo crea y valida contenido pero no lo publica por API.',
-  },
-  {
-    id: 'whatsapp',
-    nombre: 'WhatsApp',
-    redes: [],
-    herramientas: ['whatspower.broadcast'],
-    via: 'Ecosistema ALBRA: WhatsPower-ULTRA gobierna el despacho con escudo anti-ban de 5 capas; el chaleco crea campañas y audiencias.',
-    uso: 'Difusión masiva operada por el ecosistema; las conversaciones 1-a-1 viven en CRM-ALBRA (Comentarios y mensajes).',
-    nota: 'El arnés nunca envía WhatsApp directo: crea la campaña y WhatsPower despacha.',
   },
 ];
 
