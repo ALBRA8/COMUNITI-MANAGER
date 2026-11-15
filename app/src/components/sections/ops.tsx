@@ -218,16 +218,16 @@ export function AutomationsSection({ harness, brandId, refresh }: SectionProps) 
       )}
 
       {schedules !== null && brandId && schedules.length === 0 && (
-        <p className="text-xs text-muted-foreground mb-4">Sin programaciones aún en todo el arnés (se crean por marca). Crea una arriba: el arnés disparará el ciclo solo a la hora indicada.</p>
+        <p className="text-xs text-muted-foreground mb-4">Sin programaciones aún (se crean por marca). Crea una arriba: el agente disparará el ciclo solo a la hora indicada.</p>
       )}
 
       <div className="grid gap-3 md:grid-cols-2">
         {[
           { name: 'Clasificación de interacciones', trigger: 'Nueva interacción (bandeja o webhook)', detail: 'El community manager clasifica y decide responder/derivar según política y modo de autonomía.', status: 'Activa en el ciclo' },
           { name: 'Verificación de publicaciones', trigger: 'Tras publicar', detail: 'El publicador verifica el resultado y guarda evidencia; resultado incierto → reconciliación.', status: 'Activa en el ciclo' },
-          { name: 'Malla del ecosistema', trigger: 'Webhook entrante (Chismoso/Leads/CRM)', detail: 'Firmado con HMAC-SHA256 (x-harness-signature) o Bearer; los eventos se registran como interacciones con evidencia.', status: 'Activa' },
+          { name: 'Malla de integraciones firmadas', trigger: 'Webhook entrante (Chismoso/Leads/CRM)', detail: 'Firmado con HMAC-SHA256 (x-harness-signature) o Bearer; los eventos se registran como interacciones con evidencia.', status: 'Activa' },
           { name: 'Reintentos con backoff', trigger: 'Fallo de tarea', detail: 'Hasta maxAttempts con backoff exponencial; falla definitiva → registro de errores.', status: 'Activa' },
-          { name: 'Tick externo (cron del SO)', trigger: 'POST /api/scheduler {action:tick} con firma', detail: 'Alternativa al bucle interno: un cron del sistema llama al tick cada minuto con el secreto del arnés.', status: 'Opcional' },
+          { name: 'Tick externo (cron del SO)', trigger: 'POST /api/scheduler {action:tick} con firma', detail: 'Alternativa al bucle interno: un cron del sistema llama al tick cada minuto con el secreto del panel.', status: 'Opcional' },
         ].map((a) => (
           <Card key={a.name}>
             <CardHeader className="pb-1">

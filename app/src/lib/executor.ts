@@ -291,7 +291,7 @@ async function seedAdapter<T>(contract: Contract, payload: Record<string, unknow
   if (!url || !token) {
     return {
       outcome: 'CAPACITY_UNAVAILABLE',
-      reason: 'Semilla AGENTE-GENERAL no desplegada: configura ALBRA_SEED_URL y ALBRA_SEED_TOKEN. El arnés opera con su motor propio mientras tanto.',
+      reason: 'Semilla AGENTE-GENERAL no desplegada: configura ALBRA_SEED_URL y ALBRA_SEED_TOKEN. El agente opera con su motor propio mientras tanto.',
     } as ContractResult<T>;
   }
   try {

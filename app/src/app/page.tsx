@@ -1,6 +1,6 @@
 'use client';
 
-// COMUNITI-MANAGER — Panel del agente de comunidad (AGENTE-GENERAL)
+// COMUNITI-MANAGER — Panel del agente independiente de redes sociales
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTheme } from 'next-themes';
@@ -182,7 +182,7 @@ export default function Page() {
           'hidden md:block'
         )}>
           <ScrollArea className="h-[calc(100vh-3.5rem)]">
-            <nav className="p-3 space-y-4" aria-label="Secciones del arnés">
+            <nav className="p-3 space-y-4" aria-label="Secciones del panel">
               {Object.entries(grouped).map(([group, items]) => (
                 <div key={group}>
                   <p className="px-2 mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{group}</p>

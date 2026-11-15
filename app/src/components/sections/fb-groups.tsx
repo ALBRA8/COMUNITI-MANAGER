@@ -170,7 +170,7 @@ export function FbGroupsSection({ brandId, refresh }: SectionProps) {
     <div className="space-y-5">
       <SectionHeader
         title="Grupos de Facebook"
-        description="El pantalón del chaleco: publicación en grupos a ritmo humano desde un Chrome real con tu propia sesión. La API oficial de grupos de Meta fue eliminada el 22/04/2024; este módulo es la vía honesta y su riesgo está declarado en la FICHA."
+        description="Publicación en grupos a ritmo humano desde un Chrome real con tu propia sesión. La API oficial de grupos de Meta fue eliminada el 22/04/2024; este módulo es la vía honesta y su riesgo está declarado en la FICHA."
       />
 
       {/* Franja de KPIs */}
@@ -225,7 +225,7 @@ export function FbGroupsSection({ brandId, refresh }: SectionProps) {
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="flex items-center gap-2 text-sm"><Radio className="h-4 w-4 text-primary" /> Workers de publicación</CardTitle>
-          <CardDescription>El mismo worker corre en tu PC (mismo riesgo que las herramientas del mercado) o en un VPS 24/7. El chaleco solo habla HMAC con él.</CardDescription>
+          <CardDescription>El mismo worker corre en tu PC (mismo riesgo que las herramientas del mercado) o en un VPS 24/7. El agente solo habla HMAC con él.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <WorkerForm busy={busy} onRegister={async (payload) => {

@@ -115,7 +115,7 @@ El plan semanal queda en el calendario con estados y la marca tiene borradores e
 Distribuir contenido aprobado en grupos propios del usuario a ritmo humano, maximizando alcance y minimizando riesgo de restricción.
 
 ## Contexto técnico
-La Graph API oficial de Meta eliminó la publicación en grupos (22/04/2024). La única vía es el navegador con la sesión del usuario (worker FB-GROUPS del chaleco). Automatizar publicación viola los Términos de Meta: el riesgo de la cuenta es del dueño y se declara en la FICHA del módulo.
+La Graph API oficial de Meta eliminó la publicación en grupos (22/04/2024). La única vía es el navegador con la sesión del usuario (worker FB-GROUPS del agente). Automatizar publicación viola los Términos de Meta: el riesgo de la cuenta es del dueño y se declara en la FICHA del módulo.
 
 ## Procedimiento
 1. **Fuente del contenido**: siempre un borrador aprobado (APPROVE) o texto del operador. Nunca inventar datos de la marca: usar memoria de marca (tono, vocabulario, prohibidos).

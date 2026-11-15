@@ -1,6 +1,6 @@
-// llms.txt propio del arnés (P11 v2-lite, destripe Blotato §3 — patrón
+// llms.txt propio del agente (P11 v2-lite, destripe Blotato §3 — patrón
 // "documentación en espejo Markdown/llms.txt para agentes"): superficie
-// agéntica del chaleco documentada una por una, con honestidad radical.
+// agéntica del agente documentada una por una, con honestidad radical.
 // Es SOLO DESCRIPCIÓN: nada de esto autoriza a un agente a eludir el motor
 // de cumplimiento ni el HITL. La verdad de cada entrega vive en la auditoría.
 
@@ -8,13 +8,13 @@ export const dynamic = 'force-dynamic';
 
 export async function GET() {
   const now = new Date().toISOString();
-  const body = `# COMUNITI-MANAGER — arnés del ecosistema ALBRA (superficie agéntica)
+  const body = `# COMUNITI-MANAGER — agente independiente de redes sociales (superficie agéntica)
 
 > Documento para agentes (llms.txt). Generado ${now}.
 > Regla rectora: que una acción sea técnicamente posible no significa que la red la autorice.
 > La ausencia de información nunca es permiso. Este documento NO modifica políticas.
 
-## Módulo FB-GROUPS (pantalón operativo)
+## Módulo FB-GROUPS (publicación en grupos de Facebook)
 
 - GET /api/fb-agent/fb-groups — resumen de solo lectura: workers, grupos, campañas
   con conteos honestos, tareas de unión, alertas, límites vigentes y estado del motor

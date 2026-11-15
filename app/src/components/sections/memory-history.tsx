@@ -209,7 +209,7 @@ function SkillsLibrary({ brandId }: { brandId: string }) {
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <p className="text-xs font-semibold">{s.name} <span className="font-normal text-muted-foreground">· v{s.version}</span></p>
-                    <p className="text-[10px] text-muted-foreground"><code>{s.key}</code> · {s.brand ? `de marca (${s.brand.name})` : 'global'}{s.source === 'semilla' ? ' · semilla del arnés' : ''}</p>
+                    <p className="text-[10px] text-muted-foreground"><code>{s.key}</code> · {s.brand ? `de marca (${s.brand.name})` : 'global'}{s.source === 'semilla' ? ' · semilla del agente' : ''}</p>
                   </div>
                   <div className="flex items-center gap-1">
                     <Badge variant="outline" className="text-[10px]">{SKILL_CAT_LABEL[s.category] ?? s.category}</Badge>

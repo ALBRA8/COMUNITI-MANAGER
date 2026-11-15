@@ -104,7 +104,7 @@ export default function DashboardSection({ harness, brandId, refresh }: SectionP
     <div>
       <SectionHeader
         title="Resumen ejecutivo"
-        description="Estado del arnés, del ciclo autónomo y de las alertas del sistema."
+        description="Estado del agente, del ciclo autónomo y de las alertas del sistema."
       />
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4 mb-4">
         {kpis.map((k) => (

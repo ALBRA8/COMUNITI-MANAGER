@@ -505,3 +505,17 @@ Work Log:
 Stage Summary:
 - El agente es independiente en los hechos: publica con conexiones propias (worker FB, Bot API Telegram, sesión QR WhatsApp, vías IG/FB) y el ecosistema queda donde el operador lo puso: mundo aparte, integración opcional.
 - Responder al "¿dónde escaneo el QR?": AHORA en la propia vista Canales, arrancando scripts/whatsapp-daemon.cjs — sin CRM ni intermediarios.
+
+## [2026-11-15] Task ID: 28-identidad-02-ultimo-barrido-vocabulario
+
+Agent: agente principal (Z.ai)
+Task: "pero todo eso ya estaba inmerso en el agente solamente era ponerlo en el dashboard o no?"
+
+Work Log:
+- Confirmado en código: SÍ. Lo pesado ya estaba empujado (Task 27 / P19-WA-PROPIA 1122fe0 en origin): conector WhatsApp propio con QR en la vista Canales, ecosistema reagrupado como opcional en Ajustes. Esta pasada cierra los últimos strings visibles con vocabulario "chaleco/arnés/pantalón".
+- 14 archivos de texto visible alineados: registry (motor propio del AGENTE; CRM y WhatsPower descritos como mundo aparte opcional — fuera "actúa como su HOST" y "el arnés crea campañas"; FB-GROUPS módulo propio del agente), Resumen ejecutivo, Grupos de Facebook (sin "el pantalón del chaleco"), Memoria ("semilla del agente"), informe de campaña, Automatizaciones ("Malla de integraciones firmadas", secreto del panel), 404, aria-label de nav, cabecera del panel, llms.txt (título: "COMUNITI-MANAGER — agente independiente de redes sociales"), reason de la semilla, skill FB-GROUPS, textos demo y e2e.
+- Comentarios internos de lib/ se conservan (vocabulario histórico de ClonaKit, cero impacto en UI). Invariantes de QA intactos: 'Grupos de Facebook' y 'Centro de Cumplimiento Meta'.
+- Verificación: grep 0 strings viejos visibles en app/src (solo quedan comentarios internos), tsc 0, lint 0. Las 9 suites no dependen de ningún string cambiado (grep en scripts = 0 coincidencias).
+
+Stage Summary:
+- El dashboard ya solo habla de "el agente": independiente, con canales propios (Telegram, WhatsApp QR propio, grupos FB, IG/FB por API) y el ecosistema como mundo aparte opcional que se activa solo si el operador lo decide.

@@ -154,7 +154,7 @@ export default async function CampaignReport({ params }: { params: Promise<{ cam
 
         {/* Pie honesto */}
         <footer className="mt-6 border-t pt-3 text-[11px] leading-relaxed text-zinc-500">
-          Informe generado el {fmt(new Date())} desde la auditoría append-only del chaleco. Los estados reflejan lo
+          Informe generado el {fmt(new Date())} desde la auditoría append-only del agente. Los estados reflejan lo
           que el worker reportó firmado (HMAC): POSTED solo existe con postUrl verificable y FAILED con su motivo real.
           Este informe no incluye métricas de engagement: la API de grupos de Meta no existe y leer métricas de
           terceros está fuera de alcance por seguridad de la cuenta. {cancelled.length > 0 && `${cancelled.length} objetivo(s) cancelado(s)/omitido(s) no se publicaron.`}
