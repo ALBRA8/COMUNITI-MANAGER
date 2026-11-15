@@ -519,3 +519,18 @@ Work Log:
 
 Stage Summary:
 - El dashboard ya solo habla de "el agente": independiente, con canales propios (Telegram, WhatsApp QR propio, grupos FB, IG/FB por API) y el ecosistema como mundo aparte opcional que se activa solo si el operador lo decide.
+
+## [2026-11-15] Task ID: 29-dashboard-visual-y-push
+
+Agent: agente principal (Z.ai)
+Task: "quiero ver el dashboard y sube todo al repo"
+
+Work Log:
+- BD recreada (se pierde entre sesiones): el .env apunta a db/custom.db pero el runtime usa el literal del schema → prisma/db/harness.db. npx prisma db push regeneró BD y client (v6.19.2); brand-count 0.
+- Corrida controlada: pkill + rm -rf .next → next dev -p 3000 (Next 16.1.3 Turbopack); /api/harness OPERATIONAL con registro de 15 tools sincronizado.
+- Demo reversible re-sembrada (demo-seed-panel.cjs): Marca Demo Panel + 2 grupos demo + campaña aprobada. Textos demo ya con identidad corregida ("del agente").
+- capturas-panel.cjs 8/8 en download/capturas-panel/. Verificación visual: cabecera "COMUNITI-MANAGER — Agente independiente de redes sociales", Resumen "Estado del agente", Canales con "WhatsApp (sesión propia del agente)" y pasos del daemon propio (sin CRM), Ajustes con "Canales de publicación (propia)" / "Investigación de mercado (propia)" / "Ecosistema (mundo aparte: otros agentes)", catálogo "FB-GROUPS (módulo propio del agente)".
+- Server detenido tras la corrida (puerto 3000 libre).
+
+Stage Summary:
+- El operador ya puede VER el panel con la identidad corregida: 8 capturas en download/capturas-panel/. Repo al día: P19-IDENTIDAD-02 (3c4357f) en origin + este registro.
