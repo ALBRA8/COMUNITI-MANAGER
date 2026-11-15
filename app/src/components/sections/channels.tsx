@@ -41,6 +41,7 @@ interface CanalDef {
   nota?: string;
   accion?: { label: string; nav: string };
   pasos?: string[];
+  qr?: boolean; // la tarjeta muestra el QR vivo de la sesión propia
 }
 
 const CANALES: CanalDef[] = [
@@ -61,16 +62,18 @@ const CANALES: CanalDef[] = [
   },
   {
     id: 'whatsapp',
-    nombre: 'WhatsApp',
+    nombre: 'WhatsApp (sesión propia del agente)',
     redes: [],
-    herramientas: ['whatspower.broadcast'],
-    via: 'Ecosistema ALBRA: WhatsPower-ULTRA gobierna el despacho con escudo anti-ban de 5 capas; el chaleco crea campañas y audiencias.',
-    uso: 'Difusión masiva operada por el ecosistema; las conversaciones 1-a-1 viven en CRM-ALBRA (Comentarios y mensajes).',
-    nota: 'El QR no se escanea en este panel: la sesión de WhatsApp se vincula en la consola del daemon de WhatsApp de CRM-ALBRA (protocolo WhatsApp Web), que muestra el QR para escanearlo con el móvil. Este panel se conecta a ese daemon, nunca envía directo.',
+    herramientas: ['whatsapp.session'],
+    via: 'Conector propio del agente: sesión de WhatsApp vinculada por QR (protocolo WhatsApp Web, sin navegador). El conector corre en tu PC o VPS y reporta el estado al panel.',
+    uso: 'El canal de difusión y avisos del agente con su propia sesión. El motor aplica pausa global y techos de volumen a todo envío.',
+    nota: 'Protocolo no oficial: WhatsApp puede restringir el número ante reportes o volumen abusivo. Sin navegador (la política §5.1 no aplica); el riesgo se declara y se mitiga con techos y aprobaciones. El despacho programado se activa con el ejecutor del canal.',
+    qr: true,
     pasos: [
-      'Levanta el daemon de WhatsApp de CRM-ALBRA y escanea con tu móvil el QR que muestra su consola.',
-      'Apunta WHATPOWER_URL (Ajustes e integraciones o .env) a la URL del daemon y reinicia el server.',
-      'Pulsa Probar aquí: si responde, la vía WhatsApp queda Conectada.',
+      'Arranca el conector donde corre el panel: node scripts/whatsapp-daemon.cjs',
+      'El QR aparece aquí abajo: en tu móvil, WhatsApp → Dispositivos vinculados → Vincular dispositivo.',
+      'Al vincular, la tarjeta pasa a Conectado; la sesión queda guardada y no se re-escanea al reiniciar.',
+      'Para desvincular: detén el conector y borra prisma/db/whatsapp-session (o POST /logout en el puerto del conector).',
     ],
   },
   {
@@ -100,6 +103,64 @@ const ESTADO: Record<string, { label: string; variante: 'default' | 'secondary' 
   AWAITING_CREDENTIALS: { label: 'Pendiente de credenciales', variante: 'outline' },
   ERROR: { label: 'Error', variante: 'destructive' },
 };
+
+interface WaSessionState {
+  hasSession: boolean;
+  state: string;
+  qrDataUrl: string;
+  user: string;
+  phone: string;
+  lastSeenAt: string | null;
+  stale: boolean;
+  note: string;
+}
+
+const WA_STATE_LABEL: Record<string, string> = {
+  DISCONNECTED: 'Sin sesión — arranca el conector',
+  CONNECTING: 'Conectando con WhatsApp…',
+  QR_WAITING: 'QR listo — escanéalo con tu móvil',
+  CONNECTED: 'Sesión vinculada',
+};
+
+// QR en vivo de la sesión de WhatsApp propia: consulta /api/whatsapp/session
+// mientras la tarjeta está abierta. Nada se simula: si el conector está caído,
+// el bloque lo dice con el último reporte y el aviso de frescura.
+function WhatsappQrBlock() {
+  const [wa, setWa] = useState<WaSessionState | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const res = await fetch('/api/whatsapp/session', { cache: 'no-store' });
+        if (res.ok && !cancelled) setWa(await res.json());
+      } catch { /* se recupera en el siguiente tick */ }
+    };
+    load();
+    const t = setInterval(load, 5000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, []);
+
+  if (!wa || !wa.hasSession) return null; // sin sesión jamás creada: la tarjeta no añade ruido
+  const conectado = wa.state === 'CONNECTED' && !wa.stale;
+  return (
+    <div className="rounded-md border bg-background/50 p-3 grid gap-2 sm:grid-cols-[auto_1fr] items-start">
+      {wa.qrDataUrl ? (
+        <img src={wa.qrDataUrl} alt="QR de WhatsApp para vincular la sesión del agente" className="h-44 w-44 rounded-md border bg-white p-1" />
+      ) : (
+        <div className="flex h-44 w-44 items-center justify-center rounded-md border border-dashed text-[11px] text-muted-foreground text-center px-3">
+          {conectado ? 'Sesión activa' : 'Sin QR ahora mismo'}
+        </div>
+      )}
+      <div className="text-xs space-y-1">
+        <p className="font-medium">Estado del conector: {WA_STATE_LABEL[wa.state] ?? wa.state}{wa.stale && wa.state !== 'DISCONNECTED' ? ' (sin reportes recientes: ¿conector caído?)' : ''}</p>
+        {conectado && <p>Vinculado a: <b>{wa.user || wa.phone || 'WhatsApp'}</b>{wa.phone ? ` · ${wa.phone}` : ''}</p>}
+        {wa.lastSeenAt && <p className="text-muted-foreground">Último reporte: {new Date(wa.lastSeenAt).toLocaleString('es-CO')}</p>}
+        <p className="text-[11px] text-muted-foreground">{wa.note}</p>
+      </div>
+    </div>
+  );
+}
 
 export function ChannelsSection({ refresh, onNavigate }: SectionProps & { onNavigate?: (id: string) => void }) {
   const [state, setState] = useState<IntegrationsState | null>(null);
@@ -187,6 +248,7 @@ export function ChannelsSection({ refresh, onNavigate }: SectionProps & { onNavi
                 {c.pasos.map((paso, i) => <li key={i}>{paso}</li>)}
               </ol>
             )}
+            {c.qr && <WhatsappQrBlock />}
             <div className="flex flex-wrap items-center gap-2 pt-1">
               {tarjetas.map((t) => {
                 const r = tests[t.key];

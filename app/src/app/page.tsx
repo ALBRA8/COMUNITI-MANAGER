@@ -148,7 +148,7 @@ export default function Page() {
             <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground font-bold text-xs ring-1 ring-foreground/10">CM</div>
             <div className="leading-tight">
               <p className="text-sm font-semibold">COMUNITI-MANAGER</p>
-              <p className="text-[11px] text-muted-foreground hidden sm:block">Panel del agente de comunidad</p>
+              <p className="text-[11px] text-muted-foreground hidden sm:block">Agente independiente de redes sociales</p>
             </div>
           </div>
           <div className="ml-auto flex items-center gap-2">
@@ -323,7 +323,7 @@ export default function Page() {
       </div>
 
       <footer className="mt-auto border-t border-border/60 px-4 py-3 text-[11px] text-muted-foreground">
-        COMUNITI-MANAGER — operado por AGENTE-GENERAL. Estados verificados, estimaciones y pendientes de credenciales siempre distinguidos.
+        COMUNITI-MANAGER — agente independiente: publica contenido y administra cuentas en redes sociales. Estados verificados, estimaciones y pendientes de credenciales siempre distinguidos.
       </footer>
     </div>
   );

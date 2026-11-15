@@ -70,6 +70,16 @@ export const TOOLS: ToolDefinition[] = [
     costNote: 'Sin coste (API oficial gratuita)',
   },
   {
+    key: 'whatsapp.session',
+    provider: 'Conector WhatsApp propio (sesión QR)',
+    category: 'PUBLISH',
+    description: 'Canal WhatsApp del agente independiente: sesión propia vinculada por QR (protocolo WhatsApp Web, sin navegador — la política §5.1 de automatización de navegador no aplica). El conector (scripts/whatsapp-daemon.cjs) corre en el PC/VPS del operador y reporta estado firmado al panel; la sesión queda guardada. Protocolo no oficial: WhatsApp puede restringir el número ante reportes o volumen abusivo; el motor aplica pausa global y techos a todo envío. Configuración, QR y prueba reales hoy; el despacho programado se activa con el ejecutor del canal.',
+    contracts: ['get_connection_status'],
+    envKeys: [],
+    capabilities: ['sesion-qr-propia', 'protocolo-whatsapp-web', 'sin-navegador', 'techos-en-motor'],
+    costNote: 'Sin coste directo (usa la cuenta propia del operador)',
+  },
+  {
     key: 'scrapecreators.research',
     provider: 'ScrapeCreators',
     category: 'RESEARCH',
@@ -167,8 +177,12 @@ export function computeStatus(tool: ToolDefinition): ToolStatus {
 export async function syncRegistry() {
   for (const tool of TOOLS) {
     // Estado honesto del módulo FB-GROUPS: CONNECTED solo con worker registrado y con sesión.
+    // Mismo criterio para la sesión de WhatsApp propia: CONNECTED solo con un
+    // conector vivo (reporte reciente) en estado CONNECTED.
     const status = tool.key === 'fbgroups.worker'
       ? (await db.fbWorker.count()) > 0 ? 'CONNECTED' : 'AWAITING_CREDENTIALS'
+      : tool.key === 'whatsapp.session'
+      ? (await db.whatsappSession.findFirst({ where: { state: 'CONNECTED', lastSeenAt: { gte: new Date(Date.now() - 120_000) } } })) ? 'CONNECTED' : 'AWAITING_CREDENTIALS'
       : computeStatus(tool);
     await db.toolRecord.upsert({
       where: { key: tool.key },

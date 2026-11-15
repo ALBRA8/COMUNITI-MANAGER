@@ -179,7 +179,7 @@ export function MediaSection({ harness, brandId, refresh }: SectionProps) {
 
   return (
     <div>
-      <SectionHeader title="Biblioteca multimedia" description="Los assets se producen con los agentes de creatividad del ecosistema (KREA imágenes/voz, YT-Automation vídeo). Cada asset conserva fuente y licencia." />
+      <SectionHeader title="Biblioteca multimedia" description="Assets propios del agente (generación con el LLM embebido) e importados; cada asset conserva fuente y licencia. La producción externa (KREA, YT-Automation) es de otros agentes: mundo aparte, opcional." />
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         <Card>
           <CardHeader><CardTitle className="text-sm">Generadores disponibles</CardTitle>

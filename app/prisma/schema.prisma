@@ -570,3 +570,19 @@ model MetaPolicyIncident {
   createdAt      DateTime  @default(now())
   resolvedAt     DateTime?
 }
+
+// Sesión de WhatsApp del propio agente (P19-WA-PROPIA): el conector
+// (scripts/whatsapp-daemon.cjs) corre en el PC/VPS del operador, vincula la
+// sesión por QR (protocolo WhatsApp Web, sin navegador) y reporta su estado
+// aquí. Una fila por conector (daemonName único).
+model WhatsappSession {
+  id          String    @id @default(cuid())
+  daemonName  String    @unique
+  state       String    @default("DISCONNECTED") // DISCONNECTED | CONNECTING | QR_WAITING | CONNECTED
+  qrDataUrl   String    @default("") // QR vigente (data URL PNG) mientras espera escaneo
+  user        String    @default("") // identidad vinculada (nombre de perfil)
+  phone       String    @default("") // número vinculado (JID sin sufijo)
+  lastSeenAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}

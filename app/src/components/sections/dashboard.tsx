@@ -157,8 +157,8 @@ export default function DashboardSection({ harness, brandId, refresh }: SectionP
 
         <Card>
           <CardHeader>
-            <CardTitle>Conectividad del ecosistema</CardTitle>
-            <CardDescription>{connected} de {total} herramientas conectadas (honesto: sin credenciales no se simula)</CardDescription>
+            <CardTitle>Conectividad de herramientas</CardTitle>
+            <CardDescription>{connected} de {total} conectadas (honesto: sin credenciales o sesión no se simula)</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-1.5 max-h-72 overflow-y-auto">

@@ -43,33 +43,25 @@ const STATUS_LABEL: Record<string, string> = {
   AWAITING_CREDENTIALS: 'Pendiente de credenciales',
 };
 
-// Agrupación visual: el panel entero (módulos, agentes, campañas) consume
-// estas capacidades; aquí se configuran y se comprueban.
+// Agrupación visual: el panel entero (módulos, campañas, publicaciones) consume
+// estas capacidades; aquí se configuran y se comprueban. Los servicios de OTROS
+// agentes del ecosistema van en un grupo aparte: este agente es independiente
+// y publica sin ellos (mundo aparte, integración opcional vía malla firmada).
 const GROUPS: { title: string; hint: string; keys: string[] }[] = [
   {
-    title: 'Canales de publicación (Facebook, Telegram, Instagram…)',
-    hint: 'Redes donde el agente publica. Un canal solo aparece Conectado con credenciales reales; la vista Canales resume su uso y pasos de activación.',
-    keys: ['fbgroups.worker', 'telegram.bot', 'postgale.publish', 'postiz.publish', 'postlake.publish'],
-  },
-  {
-    title: 'WhatsApp y mensajería',
-    hint: 'WhatsApp se opera por el ecosistema ALBRA (difusión anti-ban e inbox/CRM); el arnés crea campañas y conversaciones, no envía directo.',
-    keys: ['whatspower.broadcast', 'crm.conversation', 'chismoso.listening'],
+    title: 'Canales de publicación (Facebook, Telegram, WhatsApp, Instagram…)',
+    hint: 'Las conexiones propias del agente para publicar y administrar cuentas. Un canal solo aparece Conectado con credenciales o sesión reales; la vista Canales resume su uso y pasos de activación.',
+    keys: ['fbgroups.worker', 'telegram.bot', 'whatsapp.session', 'postgale.publish', 'postiz.publish', 'postlake.publish'],
   },
   {
     title: 'Investigación de mercado',
-    hint: 'Datos públicos con evidencia verificable para investigación y análisis de competidores.',
-    keys: ['scrapecreators.research', 'nexscope.research'],
+    hint: 'Datos públicos con evidencia verificable para alimentar el contenido y analizar competidores.',
+    keys: ['scrapecreators.research'],
   },
   {
-    title: 'Creatividad',
-    hint: 'Generación de imágenes, voz, vídeo y assets para campañas.',
-    keys: ['krea.creativity', 'ytauto.video'],
-  },
-  {
-    title: 'Base del ecosistema',
-    hint: 'Semilla AGENTE-GENERAL y malla de eventos entrante.',
-    keys: ['albra.seed'],
+    title: 'Ecosistema (mundo aparte: otros agentes)',
+    hint: 'Servicios de OTROS agentes — CRM, Chismoso, Leads, KREA, YT-Automation, NEX-SCOPE, WhatsPower y la semilla AGENTE-GENERAL. Este agente es independiente: los consume solo si los activas, vía malla firmada; nada de esto hace falta para publicar.',
+    keys: ['albra.seed', 'whatspower.broadcast', 'crm.conversation', 'chismoso.listening', 'krea.creativity', 'ytauto.video', 'nexscope.research'],
   },
 ];
 
@@ -277,7 +269,7 @@ export function SettingsSection({ refresh, onNavigate }: SectionProps & { onNavi
         </CardHeader>
         <CardContent className="text-xs space-y-1 text-muted-foreground">
           <p>Cada variable se define en el entorno del servidor (<code className="text-[10px]">.env</code>) y el panel la detecta al reiniciar. Ejemplo: <code className="text-[10px]">POSTGALE_URL=https://…</code> y <code className="text-[10px]">POSTGALE_API_KEY=…</code> activan Postgale.</p>
-          <p>WhatsApp e Instagram no tienen conexión directa propia: se operan con las credenciales de sus vías (Postgale/Postiz para publicar, WhatsPower-ULTRA para difusión, CRM-ALBRA para inbox). La automatización de navegador contra esas redes está bloqueada por la política §5.1.</p>
+          <p>Cada red se conecta de forma propia: worker de Chrome para grupos de Facebook, Bot API oficial para Telegram, sesión QR propia para WhatsApp y vías API (Postgale/Postiz) para Instagram/Facebook. La automatización de navegador contra redes está bloqueada por la política §5.1; la sesión de WhatsApp es protocolo WhatsApp Web sin navegador, con el riesgo declarado en la tarjeta del canal.</p>
         </CardContent>
       </Card>
     </div>

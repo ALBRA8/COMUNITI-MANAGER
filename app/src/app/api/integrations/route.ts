@@ -31,14 +31,19 @@ export async function GET(req: NextRequest) {
   const denied = guardPanel(req);
   if (denied) return denied;
 
-  const [records, accounts, fbWorkers, webhookSecret, pause, mode] = await Promise.all([
+  const [records, accounts, fbWorkers, waSessions, webhookSecret, pause, mode] = await Promise.all([
     db.toolRecord.findMany(),
     db.socialAccount.findMany({ select: { network: true, handle: true, status: true } }),
     db.fbWorker.findMany({ select: { id: true, name: true, lastSeenAt: true } }),
+    db.whatsappSession.findMany({ select: { daemonName: true, state: true, user: true, phone: true, lastSeenAt: true }, orderBy: { updatedAt: 'desc' } }),
     db.setting.findUnique({ where: { key: 'harness.webhook_secret_set' } }),
     db.setting.findUnique({ where: { key: 'global_pause' } }),
     db.setting.findUnique({ where: { key: 'autonomy_mode' } }),
   ]);
+
+  const waLinked = waSessions.some(
+    (s) => s.state === 'CONNECTED' && s.lastSeenAt && Date.now() - s.lastSeenAt.getTime() < 120_000,
+  );
 
   const lastResultByKey = new Map(records.map((r) => [r.key, r.lastResult]));
 
@@ -52,6 +57,8 @@ export async function GET(req: NextRequest) {
     description: t.description,
     status: t.key === 'fbgroups.worker'
       ? (fbWorkers.length > 0 ? 'CONNECTED' : 'AWAITING_CREDENTIALS')
+      : t.key === 'whatsapp.session'
+      ? (waLinked ? 'CONNECTED' : 'AWAITING_CREDENTIALS')
       : computeStatus(t),
     envKeys: t.envKeys,
     missingEnv: missingOf(t.envKeys),
@@ -74,6 +81,14 @@ export async function GET(req: NextRequest) {
       registered: fbWorkers.length,
       lastPingAt: fbWorkers[0]?.lastSeenAt ?? null,
       names: fbWorkers.map((w) => w.name),
+    },
+    whatsappSession: {
+      linked: waLinked,
+      state: waSessions[0]?.state ?? 'DISCONNECTED',
+      user: waSessions[0]?.user ?? '',
+      phone: waSessions[0]?.phone ?? '',
+      lastSeenAt: waSessions[0]?.lastSeenAt ?? null,
+      connectors: waSessions.map((s) => s.daemonName),
     },
     webhooks: {
       secretConfigured: Boolean(process.env.HARNESS_WEBHOOK_SECRET) || webhookSecret?.value === 'true',
@@ -128,6 +143,17 @@ export async function POST(req: NextRequest) {
           reason: n > 0 ? `${n} worker(es) registrados con sesión.` : 'Sin workers registrados: registra un worker Chrome en la sección Grupos de Facebook.',
         });
       }
+      case 'whatsapp.session': {
+        const linked = await db.whatsappSession.findFirst({
+          where: { state: 'CONNECTED', lastSeenAt: { gte: new Date(Date.now() - 120_000) } },
+        });
+        return NextResponse.json({
+          outcome: linked ? 'OK' : 'AWAITING_CREDENTIALS',
+          reason: linked
+            ? `Sesión conectada (${linked.phone || linked.user || linked.daemonName}); último reporte ${linked.lastSeenAt?.toLocaleString('es-CO')}.`
+            : 'Sin sesión de WhatsApp: arranca scripts/whatsapp-daemon.cjs y escanea el QR que aparece en la vista Canales.',
+        });
+      }
       case 'albra.seed':
         return NextResponse.json({
           outcome: 'OK',
@@ -163,6 +189,8 @@ export async function POST(req: NextRequest) {
       default: {
         // Instancias propias del ecosistema (CHISMOSO, CRM, WHATPOWER, KREA,
         // YTAUTO, NEXSCOPE, POSTIZ, POSTLAKE): GET a la raíz, sin simular nada.
+        // Son de OTROS agentes (mundo aparte): integración opcional, nunca
+        // requisito para publicar.
         const url = process.env[def.envKeys[0]];
         if (!url) {
           return NextResponse.json({ outcome: 'AWAITING_CREDENTIALS', reason: `Falta ${def.envKeys[0]}` });

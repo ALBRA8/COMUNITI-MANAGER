@@ -28,7 +28,7 @@ async function j(method, path, body) {
   const g = await j('GET', '/api/integrations');
   check('GET responde 200', g.status === 200, JSON.stringify(g.data).slice(0, 120));
   check('LLM embebido reportado activo', g.data.llm?.connected === true, JSON.stringify(g.data.llm));
-  check('lista de integraciones es el registro completo (14)', Array.isArray(g.data.integrations) && g.data.integrations.length === 14, `obtenido ${g.data.integrations?.length}`);
+  check('lista de integraciones es el registro completo (15)', Array.isArray(g.data.integrations) && g.data.integrations.length === 15, `obtenido ${g.data.integrations?.length}`);
   check('cuentas de integración son honestas (connected + awaiting = total)',
     g.data.counts?.total === g.data.counts?.connected + g.data.counts?.awaiting, JSON.stringify(g.data.counts));
   check('todas las tarjetas traen missingEnv calculado',
@@ -54,6 +54,13 @@ async function j(method, path, body) {
     ['postgale.publish', 'postiz.publish', 'postlake.publish'].every((k) => byKey.has(k)));
   check('módulo propio FB-GROUPS presente y gobernado por workers (sin envKeys)',
     byKey.get('fbgroups.worker')?.envKeys?.length === 0);
+  check('canal WhatsApp PROPIO presente (whatsapp.session, sin envKeys — sesión QR)',
+    byKey.has('whatsapp.session') && byKey.get('whatsapp.session')?.envKeys?.length === 0);
+  check('WhatsApp propia sin conector reporta AWAITING_CREDENTIALS (no se finge conexión)',
+    byKey.get('whatsapp.session')?.status === 'AWAITING_CREDENTIALS' || byKey.get('whatsapp.session')?.status === 'CONNECTED',
+    `status=${byKey.get('whatsapp.session')?.status}`);
+  check('GET expone el estado de la sesión de WhatsApp propia (whatsappSession)',
+    typeof g.data.whatsappSession?.linked === 'boolean' && typeof g.data.whatsappSession?.state === 'string');
   check('FB-GROUPS sin workers reporta AWAITING_CREDENTIALS (no se finge conexión)',
     byKey.get('fbgroups.worker')?.status === 'AWAITING_CREDENTIALS' || byKey.get('fbgroups.worker')?.status === 'CONNECTED',
     `status=${byKey.get('fbgroups.worker')?.status}`);

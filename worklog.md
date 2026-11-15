@@ -487,3 +487,21 @@ Work Log:
 Stage Summary:
 - El panel quedó con 14 secciones que todas responden "¿qué hago aquí?" para la misión núcleo.
 - La respuesta al QR de WhatsApp está en la propia UI y es verdadera: QR = consola del daemon CRM-ALBRA; el chaleco se conecta por WHATPOWER_URL.
+
+## [2026-11-15] Task ID: 27-identidad-independiente-whatsapp-propia
+
+Agent: agente principal (Z.ai)
+Task: "no tienes la información clara de qué es este proyecto... es un agente totalmente independiente, su especialidad es postear contenido en redes sociales y administrar múltiples cuentas; el CRM es un mundo aparte como Chismoso o Leads — cada agente tiene su tarea"
+
+Work Log:
+- Corrección de identidad aplicada de raíz: el encuadre "el chaleco depende del ecosistema para WhatsApp/CRM" era un error sembrado por información previa mal dada. Ahora el proyecto se presenta por lo que es: agente INDEPENDIENTE de redes sociales.
+- Reencuadre en UI: cabecera "Agente independiente de redes sociales" (antes "Panel del agente de comunidad"), pie sin mención a AGENTE-GENERAL, dashboard "Conectividad de herramientas" (antes "del ecosistema"), biblioteca multimedia sin subordinación a KREA/YT-Automation.
+- Ajustes reagrupado: "Canales de publicación" (conexiones propias del agente), "Investigación de mercado" (propia) y "Ecosistema (mundo aparte: otros agentes)" — CRM/Chismoso/Leads/KREA/YT/NEX/WhatsPower/semilla marcados como de OTROS agentes, integración opcional vía malla firmada; nada de eso hace falta para publicar.
+- CONECTOR DE WHATSAPP PROPIO (P19-WA-PROPIA): el agente ahora tiene su propio canal de WhatsApp con sesión QR (protocolo WhatsApp Web, sin navegador — §5.1 no aplica por no haber automatización de navegador). Patrón worker-FB: scripts/whatsapp-daemon.cjs corre en PC/VPS del operador (Baileys 7.0.0-rc14 + qrcode, instalados limpios), vincula la sesión, guarda credenciales en prisma/db/whatsapp-session (gitignored) y reporta estado firmado HMAC (mismo estándar de la malla) a /api/whatsapp/session (nueva: GET panel + POST conector, fail-closed con HARNESS_WEBHOOK_SECRET). Modelo WhatsappSession (additivo) + estado honesto en registry (whatsapp.session, 15 tools) y /api/integrations (CONNECTED solo con conector vivo ≤120s, criterio igual al worker FB). La vista Canales muestra el QR EN VIVO (poll 5s) con pasos de vinculación, aviso de frescura y riesgo declarado (protocolo no oficial). Prueba real del tool integrada. Smoke real en sandbox: el conector arrancó, generó QR verdadero y el panel lo aceptó firmado.
+- BUGS PROPIOS corregidos: (1) doble lectura del body en POST /api/whatsapp/session (req.text() + req.json() sobre stream consumido → todo reporte moría en validación; el log laxo del conector lo disimulaba — endurecido para mostrar RECHAZO); (2) server huérfano en :3000 sirviendo código viejo → pkill + rm -rf .next antes de cada corrida; (3) bloque QR pintaba caja vacía sin sesión → ahora se oculta (lo que no sirve no estorbe).
+- test-integrations.cjs actualizado: registro 14→15 + 3 checks nuevos (whatsapp.session sin envKeys, estado honesto, whatsappSession en GET). verify-whatsapp-session.cjs nuevo: 12 checks (fail-closed 401, firma falsificada, QR_WAITING→CONNECTED, QR limpiado al conectar, estado en integraciones, prueba del tool, estado inválido 400, limpieza final).
+- REGRESIÓN COMPLETA 238/238 (P2 26, E2E 25, joins 24, media-P1 11, mejoras 25, P8-P12 24, meta-policy 54, integraciones 27, whatsapp-session 12, besttime 10), tsc 0, lint 0, consola limpia 0 visibles, capturas 8/8, SSR asertado (identidad presente, sin "operado por AGENTE-GENERAL").
+
+Stage Summary:
+- El agente es independiente en los hechos: publica con conexiones propias (worker FB, Bot API Telegram, sesión QR WhatsApp, vías IG/FB) y el ecosistema queda donde el operador lo puso: mundo aparte, integración opcional.
+- Responder al "¿dónde escaneo el QR?": AHORA en la propia vista Canales, arrancando scripts/whatsapp-daemon.cjs — sin CRM ni intermediarios.
