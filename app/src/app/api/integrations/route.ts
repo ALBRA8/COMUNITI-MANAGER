@@ -82,7 +82,7 @@ export async function GET(req: NextRequest) {
     system: {
       paused: pause?.value === 'true',
       autonomyMode: mode?.value ?? 'L2_SUPERVISED',
-      envKeysConfigured: ['DATABASE_URL', ...Object.keys(process.env).filter((k) => /POSTGALE|POSTIZ|POSTLAKE|SCRAPECREATORS|CHISMOSO|CRM_ALBRA|WHATPOWER|KREA|YTAUTO|NEXSCOPE|ALBRA_SEED|HARNESS_WEBHOOK|PANEL_TOKEN/.test(k))].sort(),
+      envKeysConfigured: ['DATABASE_URL', ...Object.keys(process.env).filter((k) => /POSTGALE|POSTIZ|POSTLAKE|SCRAPECREATORS|CHISMOSO|CRM_ALBRA|WHATPOWER|KREA|YTAUTO|NEXSCOPE|ALBRA_SEED|TELEGRAM|HARNESS_WEBHOOK|PANEL_TOKEN/.test(k))].sort(),
     },
   });
 }
@@ -146,6 +146,20 @@ export async function POST(req: NextRequest) {
           ...(await probe(`https://api.scrapecreators.com/v1/instagram/profile?handle=instagram`, { 'x-api-key': process.env.SCRAPECREATORS_API_KEY ?? '' })),
           reason: 'ScrapeCreators respondió (verifica autenticación en el estado HTTP).',
         });
+      case 'telegram.bot': {
+        // Prueba real de la Bot API oficial: getMe es un endpoint de solo lectura
+        // que autentica el token y devuelve la identidad del bot. Nunca publica.
+        const r = await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/getMe`, { signal: AbortSignal.timeout(8000) });
+        const data = await r.json().catch(() => ({}));
+        return NextResponse.json({
+          outcome: r.ok && data.ok ? 'OK' : 'ERROR',
+          httpStatus: r.status,
+          reachable: true,
+          reason: data.ok
+            ? `Bot autenticado: @${data.result.username} (id ${data.result.id}). Añádelo como administrador del canal para publicar.`
+            : 'La Bot API no autenticó el token: revisa TELEGRAM_BOT_TOKEN (se genera con @BotFather).',
+        });
+      }
       default: {
         // Instancias propias del ecosistema (CHISMOSO, CRM, WHATPOWER, KREA,
         // YTAUTO, NEXSCOPE, POSTIZ, POSTLAKE): GET a la raíz, sin simular nada.

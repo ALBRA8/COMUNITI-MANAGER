@@ -31,6 +31,7 @@ export type Contract = (typeof CONTRACTS)[number];
 
 export const NETWORKS = [
   'instagram', 'facebook', 'tiktok', 'x', 'linkedin', 'youtube', 'threads',
+  'telegram',
 ] as const;
 export type Network = (typeof NETWORKS)[number];
 
@@ -72,6 +73,7 @@ export const NETWORK_SPECS: Record<Network, { maxLength: number; hashtags: numbe
   linkedin: { maxLength: 3000, hashtags: 3, media: ['image', 'document', 'video'], format: 'Profesional; primera línea = gancho' },
   youtube: { maxLength: 5000, hashtags: 15, media: ['video'], format: 'Título + descripción con capítulos' },
   threads: { maxLength: 500, hashtags: 1, media: ['image', 'video'], format: 'Conversacional' },
+  telegram: { maxLength: 4096, hashtags: 3, media: ['image', 'video'], format: 'Mensaje de canal/grupo vía Bot API (texto 4096; pie de media 1024); el bot debe ser admin del canal' },
 };
 
 // Clasificación de interacciones (PRD §8)

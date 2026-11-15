@@ -15,7 +15,7 @@ import type { SectionProps } from '@/app/page';
 
 const NET_LABEL: Record<string, string> = {
   instagram: 'Instagram', facebook: 'Facebook', tiktok: 'TikTok', x: 'X',
-  linkedin: 'LinkedIn', youtube: 'YouTube', threads: 'Threads',
+  linkedin: 'LinkedIn', youtube: 'YouTube', threads: 'Threads', telegram: 'Telegram',
 };
 
 // ─── Marcas y cuentas ─────────────────────────────────────────────

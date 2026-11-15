@@ -11,9 +11,8 @@ import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
 import {
   LayoutDashboard, Users, CalendarDays, Inbox, BadgeCheck, PenTool,
-  Image as ImageIcon, Search, BarChart3, LineChart, Bot, Wrench,
-  Workflow, BookMarked, History, AlertTriangle, Wallet, ShieldCheck,
-  Pause, Play, Radar, UsersRound, Gavel, Settings, Sun, Moon,
+  Search, BarChart3, Bot, Workflow, History, Wallet,
+  Pause, Play, UsersRound, Gavel, Settings, Sun, Moon, RadioTower,
 } from 'lucide-react';
 
 import DashboardSection from '@/components/sections/dashboard';
@@ -26,6 +25,7 @@ import { MemorySection, HistorySection, ErrorsSection, CostsSection, SecuritySec
 import { MetaComplianceSection } from '@/components/sections/meta-compliance';
 import { FbGroupsSection } from '@/components/sections/fb-groups';
 import { SettingsSection } from '@/components/sections/settings';
+import { ChannelsSection } from '@/components/sections/channels';
 
 export interface HarnessState {
   status: string;
@@ -43,31 +43,30 @@ export interface SectionProps {
   refresh: () => void;
 }
 
-// Navegación minimalista: 5 grupos con orden de uso. Los nombres de
+// Navegación minimalista (P19-LIMPIEZA): 16 ítems en 5 grupos con orden de
+// misión — Panel, Canales (Telegram incluido), Contenido, Operación, Sistema.
+// Las vistas secundarias NO desaparecen: se pliegan dentro de su vista madre
+// (biblioteca→creación, memoria→marcas, competidores→investigación,
+// herramientas+seguridad→ajustes, errores→historial). Los nombres de
 // 'Grupos de Facebook' y 'Centro de Cumplimiento Meta' son invariantes que
 // el arnés agéntico de QA usa como anclas — no renombrar.
 const NAV = [
   { id: 'dashboard', label: 'Resumen ejecutivo', icon: LayoutDashboard, group: 'Panel' },
   { id: 'brands', label: 'Marcas y cuentas', icon: Users, group: 'Panel' },
   { id: 'calendar', label: 'Calendario editorial', icon: CalendarDays, group: 'Panel' },
-  { id: 'inbox', label: 'Comentarios y mensajes', icon: Inbox, group: 'Comunidad' },
-  { id: 'approvals', label: 'Cola de aprobaciones', icon: BadgeCheck, group: 'Comunidad' },
+  { id: 'channels', label: 'Canales', icon: RadioTower, group: 'Canales' },
+  { id: 'fbgroups', label: 'Grupos de Facebook', icon: UsersRound, group: 'Canales' },
   { id: 'creation', label: 'Centro de creación', icon: PenTool, group: 'Contenido' },
-  { id: 'media', label: 'Biblioteca multimedia', icon: ImageIcon, group: 'Contenido' },
-  { id: 'research', label: 'Investigación de mercado', icon: Search, group: 'Contenido' },
-  { id: 'competitors', label: 'Análisis de competidores', icon: Radar, group: 'Contenido' },
-  { id: 'analytics', label: 'Analítica', icon: BarChart3, group: 'Contenido' },
-  { id: 'agents', label: 'Agentes', icon: Bot, group: 'Operación' },
+  { id: 'approvals', label: 'Cola de aprobaciones', icon: BadgeCheck, group: 'Contenido' },
+  { id: 'inbox', label: 'Comentarios y mensajes', icon: Inbox, group: 'Contenido' },
+  { id: 'research', label: 'Investigación', icon: Search, group: 'Contenido' },
   { id: 'automations', label: 'Automatizaciones', icon: Workflow, group: 'Operación' },
-  { id: 'fbgroups', label: 'Grupos de Facebook', icon: UsersRound, group: 'Operación' },
-  { id: 'settings', label: 'Ajustes e integraciones', icon: Settings, group: 'Sistema' },
-  { id: 'tools', label: 'Registro de herramientas', icon: Wrench, group: 'Sistema' },
+  { id: 'agents', label: 'Agentes', icon: Bot, group: 'Operación' },
+  { id: 'analytics', label: 'Analítica', icon: BarChart3, group: 'Operación' },
   { id: 'metacompliance', label: 'Centro de Cumplimiento Meta', icon: Gavel, group: 'Sistema' },
-  { id: 'memory', label: 'Memoria de marca', icon: BookMarked, group: 'Sistema' },
-  { id: 'history', label: 'Historial de ejecución', icon: History, group: 'Sistema' },
-  { id: 'errors', label: 'Registro de errores', icon: AlertTriangle, group: 'Sistema' },
-  { id: 'costs', label: 'Costes y límites', icon: Wallet, group: 'Sistema' },
-  { id: 'security', label: 'Configuración de seguridad', icon: ShieldCheck, group: 'Sistema' },
+  { id: 'settings', label: 'Ajustes e integraciones', icon: Settings, group: 'Sistema' },
+  { id: 'history', label: 'Historial y errores', icon: History, group: 'Sistema' },
+  { id: 'costs', label: 'Límites y costes', icon: Wallet, group: 'Sistema' },
 ];
 
 const MODE_LABELS: Record<string, string> = {
@@ -275,26 +274,47 @@ export default function Page() {
             ) : (
               <div key={active} className="animate-in fade-in slide-in-from-bottom-1 duration-300">
             {active === 'dashboard' ? <DashboardSection harness={harness} brandId={brandId} refresh={refresh} />
-            : active === 'brands' ? <BrandsSection harness={harness} brandId={brandId} refresh={refresh} />
+            : active === 'brands' ? (
+              <div className="grid gap-6">
+                <BrandsSection harness={harness} brandId={brandId} refresh={refresh} />
+                <MemorySection harness={harness} brandId={brandId} refresh={refresh} />
+              </div>
+            )
             : active === 'calendar' ? <CalendarSection harness={harness} brandId={brandId} refresh={refresh} />
-            : active === 'inbox' ? <CommunitySection harness={harness} brandId={brandId} refresh={refresh} />
-            : active === 'approvals' ? <ApprovalsSection harness={harness} brandId={brandId} refresh={refresh} />
-            : active === 'creation' ? <CreationSection harness={harness} brandId={brandId} refresh={refresh} />
-            : active === 'media' ? <MediaSection harness={harness} brandId={brandId} refresh={refresh} />
-            : active === 'research' ? <ResearchSection harness={harness} brandId={brandId} refresh={refresh} />
-            : active === 'competitors' ? <CompetitorsSection harness={harness} brandId={brandId} refresh={refresh} />
-            : active === 'analytics' ? <AnalyticsSection harness={harness} brandId={brandId} refresh={refresh} />
-            : active === 'agents' ? <AgentsSection harness={harness} brandId={brandId} refresh={refresh} />
-            : active === 'settings' ? <SettingsSection harness={harness} brandId={brandId} refresh={refresh} onNavigate={setActive} />
-            : active === 'tools' ? <ToolsSection harness={harness} brandId={brandId} refresh={refresh} />
-            : active === 'automations' ? <AutomationsSection harness={harness} brandId={brandId} refresh={refresh} />
-            : active === 'memory' ? <MemorySection harness={harness} brandId={brandId} refresh={refresh} />
-            : active === 'history' ? <HistorySection harness={harness} brandId={brandId} refresh={refresh} />
-            : active === 'errors' ? <ErrorsSection harness={harness} brandId={brandId} refresh={refresh} />
-            : active === 'costs' ? <CostsSection harness={harness} brandId={brandId} refresh={refresh} />
-            : active === 'security' ? <SecuritySection harness={harness} brandId={brandId} refresh={refresh} />
+            : active === 'channels' ? <ChannelsSection harness={harness} brandId={brandId} refresh={refresh} onNavigate={setActive} />
             : active === 'fbgroups' ? <FbGroupsSection harness={harness} brandId={brandId} refresh={refresh} />
+            : active === 'creation' ? (
+              <div className="grid gap-6">
+                <CreationSection harness={harness} brandId={brandId} refresh={refresh} />
+                <MediaSection harness={harness} brandId={brandId} refresh={refresh} />
+              </div>
+            )
+            : active === 'approvals' ? <ApprovalsSection harness={harness} brandId={brandId} refresh={refresh} />
+            : active === 'inbox' ? <CommunitySection harness={harness} brandId={brandId} refresh={refresh} />
+            : active === 'research' ? (
+              <div className="grid gap-6">
+                <ResearchSection harness={harness} brandId={brandId} refresh={refresh} />
+                <CompetitorsSection harness={harness} brandId={brandId} refresh={refresh} />
+              </div>
+            )
+            : active === 'automations' ? <AutomationsSection harness={harness} brandId={brandId} refresh={refresh} />
+            : active === 'agents' ? <AgentsSection harness={harness} brandId={brandId} refresh={refresh} />
+            : active === 'analytics' ? <AnalyticsSection harness={harness} brandId={brandId} refresh={refresh} />
             : active === 'metacompliance' ? <MetaComplianceSection />
+            : active === 'settings' ? (
+              <div className="grid gap-6">
+                <SettingsSection harness={harness} brandId={brandId} refresh={refresh} onNavigate={setActive} />
+                <ToolsSection harness={harness} brandId={brandId} refresh={refresh} />
+                <SecuritySection harness={harness} brandId={brandId} refresh={refresh} />
+              </div>
+            )
+            : active === 'history' ? (
+              <div className="grid gap-6">
+                <HistorySection harness={harness} brandId={brandId} refresh={refresh} />
+                <ErrorsSection harness={harness} brandId={brandId} refresh={refresh} />
+              </div>
+            )
+            : active === 'costs' ? <CostsSection harness={harness} brandId={brandId} refresh={refresh} />
             : null}
               </div>
             )}

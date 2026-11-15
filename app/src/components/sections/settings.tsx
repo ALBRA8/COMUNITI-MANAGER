@@ -47,9 +47,9 @@ const STATUS_LABEL: Record<string, string> = {
 // estas capacidades; aquí se configuran y se comprueban.
 const GROUPS: { title: string; hint: string; keys: string[] }[] = [
   {
-    title: 'Publicación multirred (Instagram, Facebook, Threads, TikTok…)',
-    hint: 'Vías reales de publicación. Sin una de estas conectadas, el ciclo crea y valida contenido pero no lo publica.',
-    keys: ['postgale.publish', 'postiz.publish', 'postlake.publish', 'fbgroups.worker'],
+    title: 'Canales de publicación (Facebook, Telegram, Instagram…)',
+    hint: 'Redes donde el agente publica. Un canal solo aparece Conectado con credenciales reales; la vista Canales resume su uso y pasos de activación.',
+    keys: ['fbgroups.worker', 'telegram.bot', 'postgale.publish', 'postiz.publish', 'postlake.publish'],
   },
   {
     title: 'WhatsApp y mensajería',

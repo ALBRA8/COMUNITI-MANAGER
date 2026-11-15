@@ -60,6 +60,16 @@ export const TOOLS: ToolDefinition[] = [
     costNote: 'Free tier + pago por publicación',
   },
   {
+    key: 'telegram.bot',
+    provider: 'Telegram Bot API (oficial)',
+    category: 'PUBLISH',
+    description: 'Canal Telegram: publicación en canales y grupos propios vía Bot API oficial (sendMessage/sendPhoto/sendMediaGroup). Excepción estructural: API diseñada a propósito para software, gratuita y con límites públicos (el motor ya vigila sus fuentes y aplica techos TELEGRAM_POST verificados). Configuración y prueba reales hoy; el despacho programado se activa con el ejecutor del canal.',
+    contracts: ['get_connection_status'],
+    envKeys: ['TELEGRAM_BOT_TOKEN'],
+    capabilities: ['canales-telegram', 'grupos-telegram', 'bot-api-oficial', 'techos-TELEGRAM_POST-en-motor'],
+    costNote: 'Sin coste (API oficial gratuita)',
+  },
+  {
     key: 'scrapecreators.research',
     provider: 'ScrapeCreators',
     category: 'RESEARCH',

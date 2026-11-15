@@ -28,7 +28,7 @@ async function j(method, path, body) {
   const g = await j('GET', '/api/integrations');
   check('GET responde 200', g.status === 200, JSON.stringify(g.data).slice(0, 120));
   check('LLM embebido reportado activo', g.data.llm?.connected === true, JSON.stringify(g.data.llm));
-  check('lista de integraciones es el registro completo (13)', Array.isArray(g.data.integrations) && g.data.integrations.length === 13, `obtenido ${g.data.integrations?.length}`);
+  check('lista de integraciones es el registro completo (14)', Array.isArray(g.data.integrations) && g.data.integrations.length === 14, `obtenido ${g.data.integrations?.length}`);
   check('cuentas de integración son honestas (connected + awaiting = total)',
     g.data.counts?.total === g.data.counts?.connected + g.data.counts?.awaiting, JSON.stringify(g.data.counts));
   check('todas las tarjetas traen missingEnv calculado',
@@ -45,6 +45,11 @@ async function j(method, path, body) {
   const byKey = new Map((g.data.integrations ?? []).map((i) => [i.key, i]));
   check('vía WhatsApp presente (whatspower.broadcast) con su variable WHATPOWER_URL',
     byKey.get('whatspower.broadcast')?.envKeys?.includes('WHATPOWER_URL') === true);
+  check('canal Telegram presente (telegram.bot) con su variable TELEGRAM_BOT_TOKEN',
+    byKey.get('telegram.bot')?.envKeys?.includes('TELEGRAM_BOT_TOKEN') === true);
+  check('Telegram sin token reporta AWAITING_CREDENTIALS (no se finge conexión)',
+    byKey.get('telegram.bot')?.status === 'AWAITING_CREDENTIALS' || byKey.get('telegram.bot')?.status === 'CONNECTED',
+    `status=${byKey.get('telegram.bot')?.status}`);
   check('vías de publicación multirred presentes (Postgale/Postiz/PostLake)',
     ['postgale.publish', 'postiz.publish', 'postlake.publish'].every((k) => byKey.has(k)));
   check('módulo propio FB-GROUPS presente y gobernado por workers (sin envKeys)',

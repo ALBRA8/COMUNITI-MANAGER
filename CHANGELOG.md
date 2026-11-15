@@ -2,6 +2,21 @@
 
 Formato: entradas por fecha con los commits del entregable. Metodología de la casa: sala limpia, honestidad de estados, auditoría append-only.
 
+## 2026-11-15 — P19: limpieza de la casa — Canales con Telegram y navegación por misión
+
+### Navegación (21 → 16 ítems, 5 grupos por misión)
+- Nuevo orden: Panel / **Canales** / Contenido / Operación / Sistema. Lo secundario NO desaparece: se pliega en su vista madre (biblioteca→creación, memoria→marcas, competidores→investigación, registro de herramientas+seguridad→ajustes, errores→historial). Sin anclas rotas: 'Grupos de Facebook' y 'Centro de Cumplimiento Meta' conservan su nombre exacto (invariantes del arnés de QA).
+- Nueva vista **Canales** (`src/components/sections/channels.tsx`): canal primero, herramienta después. Cuatro tarjetas — Grupos de Facebook (worker propio, riesgo declarado, techo por warmup), **Telegram (Bot API oficial)** con activación en 4 pasos, Instagram/Facebook por vías (Postgale/Postiz) y WhatsApp por WhatsPower. Cada tarjeta: estado honesto, variable exacta que falta, botón Probar (solo lectura) y cuenta(s) por marca.
+
+### Telegram como canal de primera clase
+- Registro: `telegram.bot` (Bot API oficial, sin coste; contratos honestos: `get_connection_status` hoy, el despacho programado llega con el ejecutor del canal).
+- `/api/integrations` POST: prueba real con `getMe` de la Bot API — autentica el token y devuelve el @usuario del bot; nunca publica, nunca simula.
+- Red `telegram` en `NETWORKS` con especificación de formato (texto 4096, pie de media 1024, bot admin del canal) y etiqueta Telegram en Marcas y cuentas.
+- El motor YA aplicaba techos `TELEGRAM_POST` verificados (20 msg/min por grupo, 1 msg/s por chat, backoff ante 429) y vigilaba las fuentes oficiales de Telegram — ahora el panel lo hace visible.
+
+### Calidad
+- Regresión **223/223** (26+25+24+11+25+24+10+54+24; +2 checks nuevos de Telegram en integraciones), tsc 0, eslint 0, consola del navegador limpia (0 errores/0 avisos), capturas 9/9 en `download/capturas-panel`.
+
 ## 2026-11-15 — P18: panel fusionado — centro de ajustes e integraciones + consola minimalista
 
 ### Panel (una sola plataforma para configurar todo)
