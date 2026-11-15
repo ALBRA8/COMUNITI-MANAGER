@@ -161,7 +161,7 @@ export default function Page() {
               variant="ghost"
               size="icon"
               onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-              aria-label={theme === 'dark' ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'}
+              aria-label={mounted && theme === 'dark' ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'}
               className="hidden sm:inline-flex"
             >
               {mounted && theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}

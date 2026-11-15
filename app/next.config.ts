@@ -8,6 +8,10 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: false,
   },
   reactStrictMode: true,
+  // Sin indicador flotante de devtools en modo desarrollo (P19-AJUSTES-01):
+  // estorbaba la revisión visual del operador; los errores siguen visibles
+  // en dev.log y en los error boundaries de la app.
+  devIndicators: false,
   // Cabeceras mínimas de seguridad para un panel de operaciones (F-SEC-13/F-OPS-18).
   async headers() {
     return [
