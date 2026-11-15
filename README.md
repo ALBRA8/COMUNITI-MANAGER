@@ -26,9 +26,14 @@ npx prisma db push     # aplica app/prisma/schema.prisma a app/prisma/db/harness
 > En el repo entregado, corre las baterías desde `app/` con `TEST_BASE` apuntando
 > al server y ajusta el import relativo de `test-besttime.ts`, o usa el workspace.
 >
-> Los scripts de navegador (`e2e-browser-p2.sh`, `recap-browser.sh`) son
-> herramientas de captura del workspace de desarrollo: asumen node_modules y
-> la disposición de capturas de ese árbol; no forman parte del pipeline.
+> Los scripts de navegador (`e2e-browser-p2.sh`, `recap-browser.sh` y el arnés
+> agéntico `agent-browser-e2e.cjs`) son herramientas del workspace de
+> desarrollo: asumen node_modules (y, el arnés, un Playwright global) y la
+> disposición de ese árbol; no forman parte del pipeline. El arnés aplica los
+> patrones del destripe browser-use (docs/research/BROWSER_USE_DESTRIPE.md):
+> registro de acciones con validación, guardarrails deny-by-default sobre
+> TEST_BASE (incluye subrecursos), topes de pasos/tiempo y juez determinista
+> de cierre; misiones solo-lectura. Ver P17-lite en el CHANGELOG.
 
 ```bash
 bash scripts/run-with-server.sh \

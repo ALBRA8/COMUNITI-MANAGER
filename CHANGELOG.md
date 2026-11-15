@@ -2,6 +2,14 @@
 
 Formato: entradas por fecha con los commits del entregable. Metodología de la casa: sala limpia, honestidad de estados, auditoría append-only.
 
+## 2026-11-15 — P17-lite: destripe browser-use y arnés agéntico propio de QA
+
+### Documentación
+- `docs/research/BROWSER_USE_DESTRIPE.md`: destripe en sala limpia de browser-use v1.0.5 (repo clonado shallow a /tmp, commit `e717df1` del 14/11/2026) — patrones extraíbles numerados (registro de acciones, guardarrails de dominio en capas con trust model honesto, juez de cierre, extracción estructurada, topes de bucle, pin exacto), arquitectura verificada 0.x→1.0 (de una acción por paso a REPL+CDP) y matriz de compliance mapeada al motor de 6 estados. Decisión: NO se integra como dependencia (su caso de uso primario es la categoría que la regla fija §5.1 tiene bloqueada: `BROWSER_AUTOMATION*` → `BLOQUEADO`); lo valioso se re-implementa como patrón propio.
+
+### Herramientas (workspace, no forman parte del pipeline)
+- `scripts/agent-browser-e2e.cjs`: arnés agéntico de QA para el panel propio sobre Playwright global (cero dependencias nuevas en el entregable). Registro de acciones con validación (`abrir`, `clicRol`, `textoVisible`, `captura`, `extraerEstado`, `esperar`, `fin`); guardarrails deny-by-default más estrictos que el referente (allowlist solo `TEST_BASE`, `file:`/`javascript:` denegados, aborto de subrecursos de terceros con registro de violación); topes duros de pasos/tiempo; extracción estructurada de estado; juez determinista de cierre que distingue violaciones esperadas de inesperadas. 4 misiones solo-lectura: portada, módulo Grupos de Facebook por navegación real, Centro de Cumplimiento Meta (pestaña Techos multi-red) y prueba negativa del guardarrail. Primera corrida certificada: 4/4 misiones, 16 pasos, 0 violaciones inesperadas, 0 `pageerror`, cola limpia y lint 0 tras la corrida.
+
 ## 2026-11-06 — Auditoría integral y preparación para producción (9 ciclos, entregable 8f5d5cd)
 
 ### Motor de colas y anti-ban
