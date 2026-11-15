@@ -46,7 +46,8 @@ bash scripts/run-with-server.sh \
   "node scripts/test-mejoras-fb.cjs" \
   "node scripts/test-p8-p12.cjs" \
   "bun scripts/test-besttime.ts" \
-  "node scripts/test-meta-policy.cjs"
+  "node scripts/test-meta-policy.cjs" \
+  "node scripts/test-integrations.cjs"
 node scripts/cola-check.cjs   # la cola debe quedar limpia (0 jobs QUEUED/LEASED)
 npx tsc --noEmit && npm run lint
 ```

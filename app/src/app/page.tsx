@@ -1,8 +1,9 @@
 'use client';
 
-// Social Autopilot AI — Arnés de community management (panel en español)
+// COMUNITI-MANAGER — Panel del agente de comunidad (AGENTE-GENERAL)
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useTheme } from 'next-themes';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -12,7 +13,7 @@ import {
   LayoutDashboard, Users, CalendarDays, Inbox, BadgeCheck, PenTool,
   Image as ImageIcon, Search, BarChart3, LineChart, Bot, Wrench,
   Workflow, BookMarked, History, AlertTriangle, Wallet, ShieldCheck,
-  Pause, Play, Radar, UsersRound, Gavel,
+  Pause, Play, Radar, UsersRound, Gavel, Settings, Sun, Moon,
 } from 'lucide-react';
 
 import DashboardSection from '@/components/sections/dashboard';
@@ -24,6 +25,7 @@ import { AgentsSection, ToolsSection, AutomationsSection } from '@/components/se
 import { MemorySection, HistorySection, ErrorsSection, CostsSection, SecuritySection } from '@/components/sections/memory-history';
 import { MetaComplianceSection } from '@/components/sections/meta-compliance';
 import { FbGroupsSection } from '@/components/sections/fb-groups';
+import { SettingsSection } from '@/components/sections/settings';
 
 export interface HarnessState {
   status: string;
@@ -41,27 +43,31 @@ export interface SectionProps {
   refresh: () => void;
 }
 
+// Navegación minimalista: 5 grupos con orden de uso. Los nombres de
+// 'Grupos de Facebook' y 'Centro de Cumplimiento Meta' son invariantes que
+// el arnés agéntico de QA usa como anclas — no renombrar.
 const NAV = [
-  { id: 'dashboard', label: 'Resumen ejecutivo', icon: LayoutDashboard, group: 'Vista general' },
-  { id: 'brands', label: 'Marcas y cuentas', icon: Users, group: 'Vista general' },
-  { id: 'calendar', label: 'Calendario editorial', icon: CalendarDays, group: 'Vista general' },
+  { id: 'dashboard', label: 'Resumen ejecutivo', icon: LayoutDashboard, group: 'Panel' },
+  { id: 'brands', label: 'Marcas y cuentas', icon: Users, group: 'Panel' },
+  { id: 'calendar', label: 'Calendario editorial', icon: CalendarDays, group: 'Panel' },
   { id: 'inbox', label: 'Comentarios y mensajes', icon: Inbox, group: 'Comunidad' },
   { id: 'approvals', label: 'Cola de aprobaciones', icon: BadgeCheck, group: 'Comunidad' },
   { id: 'creation', label: 'Centro de creación', icon: PenTool, group: 'Contenido' },
   { id: 'media', label: 'Biblioteca multimedia', icon: ImageIcon, group: 'Contenido' },
-  { id: 'research', label: 'Investigación de mercado', icon: Search, group: 'Inteligencia' },
-  { id: 'competitors', label: 'Análisis de competidores', icon: Radar, group: 'Inteligencia' },
-  { id: 'analytics', label: 'Analítica', icon: BarChart3, group: 'Inteligencia' },
+  { id: 'research', label: 'Investigación de mercado', icon: Search, group: 'Contenido' },
+  { id: 'competitors', label: 'Análisis de competidores', icon: Radar, group: 'Contenido' },
+  { id: 'analytics', label: 'Analítica', icon: BarChart3, group: 'Contenido' },
   { id: 'agents', label: 'Agentes', icon: Bot, group: 'Operación' },
-  { id: 'tools', label: 'Herramientas e integraciones', icon: Wrench, group: 'Operación' },
   { id: 'automations', label: 'Automatizaciones', icon: Workflow, group: 'Operación' },
   { id: 'fbgroups', label: 'Grupos de Facebook', icon: UsersRound, group: 'Operación' },
-  { id: 'metacompliance', label: 'Centro de Cumplimiento Meta', icon: Gavel, group: 'Gobierno' },
-  { id: 'memory', label: 'Memoria de marca', icon: BookMarked, group: 'Gobierno' },
-  { id: 'history', label: 'Historial de ejecución', icon: History, group: 'Gobierno' },
-  { id: 'errors', label: 'Registro de errores', icon: AlertTriangle, group: 'Gobierno' },
-  { id: 'costs', label: 'Costes y límites', icon: Wallet, group: 'Gobierno' },
-  { id: 'security', label: 'Configuración de seguridad', icon: ShieldCheck, group: 'Gobierno' },
+  { id: 'settings', label: 'Ajustes e integraciones', icon: Settings, group: 'Sistema' },
+  { id: 'tools', label: 'Registro de herramientas', icon: Wrench, group: 'Sistema' },
+  { id: 'metacompliance', label: 'Centro de Cumplimiento Meta', icon: Gavel, group: 'Sistema' },
+  { id: 'memory', label: 'Memoria de marca', icon: BookMarked, group: 'Sistema' },
+  { id: 'history', label: 'Historial de ejecución', icon: History, group: 'Sistema' },
+  { id: 'errors', label: 'Registro de errores', icon: AlertTriangle, group: 'Sistema' },
+  { id: 'costs', label: 'Costes y límites', icon: Wallet, group: 'Sistema' },
+  { id: 'security', label: 'Configuración de seguridad', icon: ShieldCheck, group: 'Sistema' },
 ];
 
 const MODE_LABELS: Record<string, string> = {
@@ -75,6 +81,10 @@ export default function Page() {
   const [active, setActive] = useState('dashboard');
   const [brandId, setBrandId] = useState('');
   const [navOpen, setNavOpen] = useState(false);
+  const { theme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => setMounted(true), []);
 
   const refresh = useCallback(async () => {
     try {
@@ -134,10 +144,10 @@ export default function Page() {
             <LayoutDashboard className="h-5 w-5" />
           </Button>
           <div className="flex items-center gap-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground font-bold text-xs shadow-sm ring-1 ring-foreground/10">SA</div>
+            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground font-bold text-xs ring-1 ring-foreground/10">CM</div>
             <div className="leading-tight">
-              <p className="text-sm font-semibold">Social Autopilot AI</p>
-              <p className="text-[11px] text-muted-foreground hidden sm:block">Arnés para el ecosistema de agentes ALBRA</p>
+              <p className="text-sm font-semibold">COMUNITI-MANAGER</p>
+              <p className="text-[11px] text-muted-foreground hidden sm:block">Panel del agente de comunidad</p>
             </div>
           </div>
           <div className="ml-auto flex items-center gap-2">
@@ -147,6 +157,15 @@ export default function Page() {
             <Badge variant="outline" className="hidden md:inline-flex">
               Autonomía: {MODE_LABELS[harness?.autonomyMode ?? ''] ?? harness?.autonomyMode ?? '—'}
             </Badge>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+              aria-label={theme === 'dark' ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'}
+              className="hidden sm:inline-flex"
+            >
+              {mounted && theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </Button>
             <Button size="sm" variant={harness?.paused ? 'default' : 'outline'} disabled={toggling} onClick={togglePause}>
               {harness?.paused ? <Play className="h-4 w-4 mr-1" /> : <Pause className="h-4 w-4 mr-1" />}
               {harness?.paused ? 'Reanudar' : 'Pausa global'}
@@ -266,6 +285,7 @@ export default function Page() {
             : active === 'competitors' ? <CompetitorsSection harness={harness} brandId={brandId} refresh={refresh} />
             : active === 'analytics' ? <AnalyticsSection harness={harness} brandId={brandId} refresh={refresh} />
             : active === 'agents' ? <AgentsSection harness={harness} brandId={brandId} refresh={refresh} />
+            : active === 'settings' ? <SettingsSection harness={harness} brandId={brandId} refresh={refresh} onNavigate={setActive} />
             : active === 'tools' ? <ToolsSection harness={harness} brandId={brandId} refresh={refresh} />
             : active === 'automations' ? <AutomationsSection harness={harness} brandId={brandId} refresh={refresh} />
             : active === 'memory' ? <MemorySection harness={harness} brandId={brandId} refresh={refresh} />
@@ -283,7 +303,7 @@ export default function Page() {
       </div>
 
       <footer className="mt-auto border-t border-border/60 px-4 py-3 text-[11px] text-muted-foreground">
-        Social Autopilot AI — el arnés viste al agente: AGENTE-GENERAL (semilla) + ecosistema ALBRA. Los estados distinguen siempre entre datos verificados, estimaciones y funciones pendientes de credenciales.
+        COMUNITI-MANAGER — operado por AGENTE-GENERAL. Estados verificados, estimaciones y pendientes de credenciales siempre distinguidos.
       </footer>
     </div>
   );

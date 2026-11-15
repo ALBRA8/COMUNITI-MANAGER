@@ -2,6 +2,21 @@
 
 Formato: entradas por fecha con los commits del entregable. Metodología de la casa: sala limpia, honestidad de estados, auditoría append-only.
 
+## 2026-11-15 — P18: panel fusionado — centro de ajustes e integraciones + consola minimalista
+
+### Panel (una sola plataforma para configurar todo)
+- Nueva vista **Ajustes e integraciones** (`src/components/sections/settings.tsx` + `GET/POST /api/integrations`): centro unificado donde se configura y comprueba TODO el arnés desde un solo lugar — IA (LLM embebido), vías de publicación multirred (Instagram/Facebook vía Postgale/Postiz/PostLake; Facebook Groups vía worker propio), WhatsApp y mensajería (WHATSPOWER-ULTRA, CRM-ALBRA, AGENTE-CHISMOSO), investigación (ScrapeCreators, NEX-SCOPE), creatividad (KREA, YTAUTO), semilla AGENTE-GENERAL, webhooks entrantes, cuentas sociales objetivo y estado del sistema.
+- Cada tarjeta muestra el estado REAL (conectada / pendiente de credenciales), las variables de entorno exactas que faltan y un botón **Probar** que hace una prueba de conexión de solo lectura (endpoint documentado si existe; alcanzabilidad HTTP cruda para instancias propias del ecosistema; nunca simula éxito).
+- Honestidad radical: las claves NUNCA se guardan en la base de datos del panel (protección de datos > comodidad); viven en variables de entorno del servidor y la vista lo explica. FB-GROUPS solo aparece conectado con un worker real registrado (mismo criterio del registro central).
+- La pregunta "¿el agente es mock?" queda respondida en código: ninguna integración se simula; lo no conectado se declara `AWAITING_CREDENTIALS` con la variable exacta que falta.
+
+### Consola minimalista
+- Navegación reorganizada de 6 grupos difusos a 5 claros por frecuencia de uso (Panel, Comunidad, Contenido, Operación, Sistema); los nombres ancla del arnés de QA (`Grupos de Facebook`, `Centro de Cumplimiento Meta`) se conservan intactos.
+- Tema oscuro por defecto con conmutador claro/oscuro (`next-themes`, ya dependiente); identidad unificada COMUNITI-MANAGER ("Panel del agente de comunidad"); footer reducido; sin ornamentos (una tarjeta por integración, texto sobrio).
+
+### Tests
+- `scripts/test-integrations.cjs`: 22 checks nuevos (estado unificado honesto, contrato anti-mock, pruebas de conexión, 400 en herramienta desconocida). Batería completa certificada en esta entrada: 221 checks verdes (P2 26, E2E 25, joins 24, P1 11, mejoras 25, P8-P12 24, besttime 10, meta-policy 54, integraciones 22), tsc 0, lint 0, cola limpia, capturas del panel 8/8.
+
 ## 2026-11-15 — P17-lite: destripe browser-use y arnés agéntico propio de QA
 
 ### Documentación
