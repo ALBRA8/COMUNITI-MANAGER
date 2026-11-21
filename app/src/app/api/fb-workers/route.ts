@@ -24,7 +24,7 @@ export async function GET() {
       const usage = usageByWorker.get(w.id);
       return {
         ...w,
-        proxyMasked: maskProxy(w.proxyUrl), // credenciales del proxy nunca salen del chaleco
+        proxyMasked: maskProxy(w.proxyUrl), // credenciales del proxy nunca salen del agente
         proxyConfigured: Boolean(w.proxyUrl),
         proxyUrl: undefined,
         usage: {

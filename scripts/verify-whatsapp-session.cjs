@@ -38,7 +38,7 @@ async function report(payload) {
 }
 
 async function dbCleanup() {
-  const { PrismaClient } = require('@prisma/client');
+  const { PrismaClient } = require('./lib/app-prisma.cjs');
   const db = new PrismaClient();
   await db.whatsappSession.deleteMany({});
   await db.$disconnect();

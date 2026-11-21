@@ -2,7 +2,7 @@
 /**
  * SIEMBRA DEMO para revisión visual del panel por el operador (se limpia después
  * con demo-cleanup-panel.cjs). Crea: 1 marca demo + 3 grupos demo + 1 campaña
- * demo aprobada con 2 objetivos. Nada toca Facebook real (contrato chaleco↔worker).
+ * demo aprobada con 2 objetivos. Nada toca Facebook real (contrato agente↔worker).
  * Uso: TEST_BASE=http://localhost:3000 node scripts/demo-seed-panel.cjs
  */
 const BASE = process.env.TEST_BASE ?? 'http://localhost:3000';
@@ -11,7 +11,7 @@ const j = async (m, p, b) => { const r = await fetch(BASE + p, { method: m, head
 (async () => {
   const brand = await j('POST', '/api/brands', {
     name: 'Marca Demo Panel',
-    identity: 'Marca de demostración interna para revisión visual del arnés (sin datos reales).',
+    identity: 'Marca de demostración interna para revisión visual del agente (sin datos reales).',
     tone: 'cercano, claro y honesto',
     audience: 'emprendedores y comercios locales',
     maxPostsPerDay: 3,
@@ -30,7 +30,7 @@ const j = async (m, p, b) => { const r = await fetch(BASE + p, { method: m, head
 
   const camp = await j('POST', '/api/fb-campaigns', {
     name: 'Lanzamiento demo (panel)',
-    text: '{Hola|Buenas} vecinos, esta es una {demo|prueba} del arnés sobre {café|comunidad} local.',
+    text: '{Hola|Buenas} vecinos, esta es una {demo|prueba} del agente sobre {café|comunidad} local.',
     mode: 'group', engine: 'dom',
     firstComment: 'Enlace en el primer comentario (demo)',
     targets: ids, windowStart: 0, windowEnd: 24, nightOverride: true, approve: true,

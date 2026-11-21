@@ -21,7 +21,7 @@
 
 ## 3. CRM-ALBRA (mensajería entrante y CRM) — el arnés es su HOST
 
-- **Contrato formal del chaleco**: `POST {CRM_URL}/api/crm/actions` con API key `albra_*` (RBAC); MCP en `{CRM_URL}/api/mcp` (16 tools); memoria `{CRM_URL}/api/memory` (MemoryDV).
+- **Contrato formal del agente**: `POST {CRM_URL}/api/crm/actions` con API key `albra_*` (RBAC); MCP en `{CRM_URL}/api/mcp` (16 tools); memoria `{CRM_URL}/api/memory` (MemoryDV).
 - **Uso desde el arnés**: derivar conversaciones humanas al inbox del CRM; leer contactos/oportunidades; registrar leads captados en comentarios; nunca auto-responder por su cuenta (eso ya lo hace el CRM con handoff y kill-switch).
 - **Variables**: `CRM_ALBRA_URL`, `CRM_ALBRA_API_KEY`.
 

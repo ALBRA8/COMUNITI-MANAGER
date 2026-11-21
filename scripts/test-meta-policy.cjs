@@ -27,7 +27,7 @@ async function j(method, path, body, headers = {}) {
 
 (async () => {
   console.log('META POLICY INTELLIGENCE — 14 casos obligatorios\n');
-  const { PrismaClient } = require('@prisma/client');
+  const { PrismaClient } = require('./lib/app-prisma.cjs');
   const prisma = new PrismaClient();
 
   // Limpieza de corridas previas (idempotencia ante DB sucia)
@@ -39,6 +39,23 @@ async function j(method, path, body, headers = {}) {
     await prisma.metaPolicySource.delete({ where: { id: s.id } });
   }
   await prisma.metaPolicyIncident.deleteMany({ where: { description: { contains: 'MP-TEST' } } });
+
+  // ── Bootstrap honesto para BD virgen (repo entregado) ──
+  // El motor exige frescura REAL de las fuentes del producto FACEBOOK_GROUPS
+  // para dar veredictos no bloqueantes. En una BD recién creada las fuentes
+  // sembradas nunca se consultaron → POLITICA_DESACTUALIZADA. Se consultan
+  // contra la red REAL (sin fingir frescura): si una fuente no responde queda
+  // como INACCESSIBLE y el test fallará honesto en ese entorno.
+  const fbSources = await prisma.metaPolicySource.findMany({
+    where: { active: true, OR: [{ product: 'FACEBOOK_GROUPS' }, { alsoCovers: { contains: 'FACEBOOK_GROUPS' } }] },
+  });
+  if (fbSources.length) {
+    console.log(`[bootstrap] verificando ${fbSources.length} fuente(s) reales del producto FACEBOOK_GROUPS…`);
+    for (const s of fbSources) {
+      const r = await j('POST', '/api/meta-policy', { action: 'check-source', sourceId: s.id });
+      console.log(`  [bootstrap] ${s.key}: ${r.data?.result?.status ?? 'SIN_RESPUESTA'}${r.data?.result?.httpStatus ? ` (HTTP ${r.data.result.httpStatus})` : ''}`);
+    }
+  }
 
   // ── CASO 1: detección de una política nueva (primera captura → NEW) ──
   console.log('1) Detección de una política nueva');
@@ -124,8 +141,6 @@ async function j(method, path, body, headers = {}) {
   const r4 = await j('POST', '/api/meta-policy', { action: 'test-authorize', operation: 'TEST_OP', approvedByHuman: true });
   check('motor activo y fresco → veredicto no bloqueante para producto vigilado', r4.data.result?.verdict === 'PERMITIDO_CON_CONDICIONES', JSON.stringify(r4.data).slice(0, 140));
   // Producto sin verificación reciente (TESTPROD vencida hace 30 días)
-  const authLib = require('/home/z/my-project/node_modules/.prisma/client').Prisma;
-  void authLib;
   const staleAuthorize = async () => {
     // vía directa a la librería no existe por HTTP con producto custom;
     // se comprueba con la fuente REAL del producto TESTPROD mediante consulta
@@ -274,7 +289,7 @@ async function j(method, path, body, headers = {}) {
   process.exit(fail === 0 ? 0 : 1);
 })().catch(async (e) => {
   try { // higiene también en salida temprana (F2-OPS-01/F3-OPS-01): cliente propio porque este catch está fuera del closure principal
-    const { PrismaClient } = require('@prisma/client');
+    const { PrismaClient } = require('./lib/app-prisma.cjs');
     const prisma = new PrismaClient();
     const prev = globalThis.__prevAutonomy;
     if (prev === null) await prisma.setting.delete({ where: { key: 'autonomy_mode' } }).catch(() => undefined);

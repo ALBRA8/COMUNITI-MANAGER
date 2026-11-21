@@ -1,4 +1,4 @@
-// E2E del módulo FB-GROUPS (sin tocar Facebook real: solo contrato chaleco↔worker)
+// E2E del módulo FB-GROUPS (sin tocar Facebook real: solo contrato agente↔worker)
 const stamp = Date.now();
 const CAMP_NAME = 'E2E-' + stamp;
 const BASE = process.env.TEST_BASE ?? 'http://localhost:3000';
@@ -56,7 +56,7 @@ async function j(method, path, body, headers = {}) {
 
   log('— 4. Campaña con 2 objetivos (spintax {Hola|Buenas})');
   const camp = await j('POST', '/api/fb-campaigns', {
-    name: CAMP_NAME, text: '{Hola|Buenas} vecinos, probando el pantalón del chaleco con {café|amor}.', mode: 'group', engine: 'dom',
+    name: CAMP_NAME, text: '{Hola|Buenas} vecinos, probando el canal de grupos del agente con {café|amor}.', mode: 'group', engine: 'dom',
     firstComment: 'Enlace en el primer comentario', targets: [groups[0].id, groups[1].id], windowStart: 0, windowEnd: 24, nightOverride: true, approve: true,
   });
   check('campaña creada con 2 jobs', camp.status === 200 && camp.data.jobs === 2, JSON.stringify(camp.data));

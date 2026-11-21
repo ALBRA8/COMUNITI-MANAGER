@@ -1,5 +1,5 @@
 // Motor anti-ban del worker (FICHA §6): ritmo humano, corte nocturno, pausa defensiva.
-// El techo diario con warmup lo aplica el chaleco al reclamar jobs; el worker añade
+// El techo diario con warmup lo aplica el agente al reclamar jobs; el worker añade
 // las capas locales: separación entre posts, ventana nocturna y pausas por detección.
 
 const NIGHT_START = Number(process.env.FB_NIGHT_START ?? 22);
@@ -60,7 +60,7 @@ export function scanForMarkers(text) {
   return DETECTION_MARKERS.find((m) => t.includes(m)) ?? null;
 }
 
-/** Estado local del worker (en memoria; el estado persistente vive en el chaleco). */
+/** Estado local del worker (en memoria; el estado persistente vive en el agente). */
 export function createGate() {
   return {
     lastPostAt: null,

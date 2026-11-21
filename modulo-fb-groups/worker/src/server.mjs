@@ -1,6 +1,6 @@
 // FB-GROUPS Worker — el Chrome que publica (FICHA: ../FICHA.md §5)
 // Portable: corre en PC local (headful) o VPS 24/7 (headless con perfil persistente).
-// Habla SOLO HMAC con el chaleco: tira de jobs (claim) y empuja reportes (report).
+// Habla SOLO HMAC con el agente: tira de jobs (claim) y empuja reportes (report).
 
 import http from 'node:http';
 import { sign } from './hmac.mjs';
@@ -54,7 +54,7 @@ async function tick({ manual = false } = {}) {
     return { skipped: true, reason: verdict.reason };
   }
 
-  // 2) Reclamar un job al chaleco
+  // 2) Reclamar un job al agente
   let claim;
   try {
     claim = await harnessPost('/api/fb-jobs/claim', { workerId: WORKER_ID, capacity: 1 });
@@ -123,7 +123,7 @@ async function tick({ manual = false } = {}) {
     commentDone = await engine.firstComment(job, result.postUrl).catch(() => false);
   }
 
-  // 6) Reporte firmado al chaleco
+  // 6) Reporte firmado al agente
   await harnessPost('/api/fb-jobs/report', {
     workerId: WORKER_ID,
     results: [{
@@ -149,7 +149,7 @@ async function tick({ manual = false } = {}) {
   return { posted: false, job: job.targetName, reason: result.failReason };
 }
 
-// ─── P6 auto-join: bucle propio, más lento y con topes del chaleco ──
+// ─── P6 auto-join: bucle propio, más lento y con topes del agente ──
 
 async function joinTick() {
   const missing = cfgMissing();
@@ -159,7 +159,7 @@ async function joinTick() {
   const verdict = joinGateAllows(gate);
   if (!verdict.ok) return { skipped: true, reason: verdict.reason };
 
-  // 2) Reclamar una tarea de unión al chaleco (techo propio con warmup)
+  // 2) Reclamar una tarea de unión al agente (techo propio con warmup)
   let claim;
   try {
     claim = await harnessPost('/api/fb-joins/claim', { workerId: WORKER_ID });
@@ -203,7 +203,7 @@ async function joinTick() {
     result = { status: 'FAILED', failReason: `Error del motor: ${e.message}` };
   }
 
-  // 5) Reporte firmado al chaleco
+  // 5) Reporte firmado al agente
   await harnessPost('/api/fb-joins/report', {
     workerId: WORKER_ID,
     reports: [{ taskId: claim.task.id, status: result.status, failReason: result.failReason ?? '' }],
@@ -275,9 +275,9 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log('FB-GROUPS Worker (módulo del chaleco COMUNITI-MANAGER)');
+  console.log('FB-GROUPS Worker (módulo del agente COMUNITI-MANAGER)');
   console.log(`· API local:    http://localhost:${PORT}/health`);
-  console.log(`· Chaleco:      ${HARNESS_URL || '(definir HARNESS_URL)'}`);
+  console.log(`· Agente:      ${HARNESS_URL || '(definir HARNESS_URL)'}`);
   console.log(`· Worker ID:    ${WORKER_ID || '(definir WORKER_ID)'}`);
   console.log(`· Chrome real:  perfil "${process.env.FB_PROFILE_DIR ?? './chrome-profile'}", ${process.env.FB_HEADFUL === '0' ? 'headless (VPS)' : 'headful (PC)'}`);
   const missing = cfgMissing();
@@ -288,6 +288,6 @@ server.listen(PORT, () => {
     setInterval(() => tick().catch((e) => console.error('[tick]', e.message)), TICK_SECONDS * 1000);
     setInterval(() => joinTick().catch((e) => console.error('[join-tick]', e.message)), TICK_SECONDS * 1000);
     console.log(`· Bucle interno activo cada ${TICK_SECONDS}s: ping, claim, publicación y reporte.`);
-    console.log(`· Auto-join activo (P6): tareas de unión con ritmo propio de ${process.env.FB_JOIN_GAP_MIN ?? 20}-${process.env.FB_JOIN_GAP_MAX ?? 45} min y techo del chaleco.`);
+    console.log(`· Auto-join activo (P6): tareas de unión con ritmo propio de ${process.env.FB_JOIN_GAP_MIN ?? 20}-${process.env.FB_JOIN_GAP_MAX ?? 45} min y techo del agente.`);
   }
 });

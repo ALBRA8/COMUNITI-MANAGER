@@ -1,6 +1,6 @@
 // Higiene de pruebas: cancela el residuo demo del E2E de la sesión anterior
 // para que no ensucie las colas de los tests de regresión.
-const { PrismaClient } = require('@prisma/client');
+const { PrismaClient } = require('./lib/app-prisma.cjs');
 const p = new PrismaClient();
 (async () => {
   const c = await p.fbCampaign.findFirst({ where: { name: 'Lanzamiento demo (P2)' } });

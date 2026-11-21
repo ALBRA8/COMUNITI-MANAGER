@@ -1,4 +1,4 @@
-// Módulo FB-GROUPS (el "pantalón" del chaleco) — FICHA: modulo-fb-groups/FICHA.md
+// Módulo FB-GROUPS (publicación en grupos) — FICHA: modulo-fb-groups/FICHA.md
 // Núcleo server-side: verificación HMAC de workers, leases anti-doble-disparo,
 // techo diario con warmup, ventana horaria, spintax determinista y variante IA
 // graduada por nivel de autonomía. Cero datos inventados: sin URL viva no hay éxito.

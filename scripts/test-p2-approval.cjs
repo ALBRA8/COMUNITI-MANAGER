@@ -35,7 +35,7 @@ async function text(path) {
   console.log('P2-APPROVED — gate pre-vuelo (borrador → aprobación HITL → cola)\n');
 
   // 0) Autonomía L1: variante spintax determinista, sin espera de IA en el test
-  const { PrismaClient } = require('@prisma/client');
+  const { PrismaClient } = require('./lib/app-prisma.cjs');
   const prisma = new PrismaClient();
   const prevAutonomy = (await prisma.setting.findUnique({ where: { key: 'autonomy_mode' } }))?.value ?? null;
   globalThis.__prevAutonomy = prevAutonomy; // disponible también en el catch de salida temprana
@@ -172,7 +172,7 @@ async function text(path) {
   process.exit(fail > 0 ? 1 : 0);
 })().catch(async (e) => {
   try { // higiene también en salida temprana (F2-OPS-01/F3-OPS-01): cliente propio porque este catch está fuera del closure principal
-    const { PrismaClient } = require('@prisma/client');
+    const { PrismaClient } = require('./lib/app-prisma.cjs');
     const prisma = new PrismaClient();
     const prev = globalThis.__prevAutonomy;
     if (prev === null) await prisma.setting.delete({ where: { key: 'autonomy_mode' } }).catch(() => undefined);

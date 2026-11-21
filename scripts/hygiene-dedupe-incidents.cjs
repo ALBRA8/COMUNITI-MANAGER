@@ -1,6 +1,6 @@
 // Higiene one-off: de los incidentes SOURCE_FAILURE abiertos, deja solo el más
 // reciente por fuente (residuo de corridas anteriores a la deduplicación).
-const { PrismaClient } = require('@prisma/client');
+const { PrismaClient } = require('./lib/app-prisma.cjs');
 const p = new PrismaClient();
 (async () => {
   const open = await p.metaPolicyIncident.findMany({ where: { kind: 'SOURCE_FAILURE', status: 'OPEN' }, orderBy: { createdAt: 'desc' } });

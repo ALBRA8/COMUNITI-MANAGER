@@ -1,8 +1,26 @@
-// Test unitario de la lib pura de mejores horas (P10) — corre con bun:
-//   bun scripts/test-besttime.ts
+// Test unitario de la lib pura de mejores horas (P10) — corre con Node ≥24 o bun:
+//   node scripts/test-besttime.ts   (desde la raíz del repo o del workspace)
 // Cubre: conteo por celda, tasa, sugerencias con muestra mínima, honestidad
 // de datos insuficientes y el corte de horas fuera de 6..21.
-import { buildBestTime } from '../src/lib/fb-besttime';
+// El import resuelve la lib en ambos diseños de carpeta: en el workspace la
+// app vive en ../src, en el repo entregado vive en ../app/src.
+
+let buildBestTime: (jobs: Array<{ status: string; postedAt: string | null; updatedAt: string }>) => {
+  sample: number; totalPosted: number; totalFailed: number;
+  cells: Array<{ day: number; hour: number; posted: number; failed: number; total: number; rate: number }>;
+  suggestions: Array<{ day: number; hour: number; posted: number; total: number; rate: number }>;
+  enoughData: boolean; hours: number[];
+} | undefined = undefined;
+
+const base = new URL('.', import.meta.url);
+for (const cand of ['../src/lib/fb-besttime.ts', '../src/lib/fb-besttime', '../app/src/lib/fb-besttime.ts', '../app/src/lib/fb-besttime']) {
+  const mod = await import(new URL(cand, base).href).catch(() => null);
+  if (mod?.buildBestTime) { buildBestTime = mod.buildBestTime; break; }
+}
+if (!buildBestTime) {
+  console.error('✗ no encontré src/lib/fb-besttime ni en ../src ni en ../app/src');
+  process.exit(1);
+}
 
 let pass = 0, fail = 0;
 function check(name: string, cond: boolean, extra = '') {

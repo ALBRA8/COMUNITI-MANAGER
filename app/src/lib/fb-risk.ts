@@ -5,7 +5,7 @@
 // ─── Score de riesgo pre-vuelo (roadmap #1: maherpost/groupposting) ──
 // 0-100 (mayor = más riesgo). Factores deterministas y declarados: el panel
 // advierte ANTES del límite, no después. No es una promesa: es una foto del
-// perfil de la campaña contra el warmup que ya conoce el chaleco.
+// perfil de la campaña contra el warmup que ya conoce el agente.
 
 export interface RiskInput {
   sessionAgeDays: number; // antigüedad de la cuenta (peor caso si hay varias)

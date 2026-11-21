@@ -2,7 +2,7 @@
 // la DB mientras se depuraba el fetcher. Para cada fuente que hoy responde
 // (lastStatus OK/CHANGED), cierra sus cambios INACCESSIBLE abiertos y resuelve
 // sus incidentes SOURCE_FAILURE. Deja abiertos solo los fallos reales vigentes.
-const { PrismaClient } = require('@prisma/client');
+const { PrismaClient } = require('./lib/app-prisma.cjs');
 const p = new PrismaClient();
 (async () => {
   const alive = await p.metaPolicySource.findMany({ where: { lastStatus: { in: ['OK', 'CHANGED'] } }, select: { id: true, key: true } });

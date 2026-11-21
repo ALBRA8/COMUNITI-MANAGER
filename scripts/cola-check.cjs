@@ -1,6 +1,6 @@
 // Diagnóstico rápido de cola: campañas con jobs vivos (QUEUED/LEASED).
 // Uso: node scripts/cola-check.cjs
-const { PrismaClient } = require('@prisma/client');
+const { PrismaClient } = require('./lib/app-prisma.cjs');
 const p = new PrismaClient();
 
 (async () => {

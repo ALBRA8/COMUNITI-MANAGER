@@ -1,6 +1,6 @@
 'use client';
 
-// Sección: Grupos de Facebook (módulo FB-GROUPS, el "pantalón" del chaleco)
+// Sección: Grupos de Facebook (módulo FB-GROUPS, publicación en grupos)
 // FICHA: modulo-fb-groups/FICHA.md — workers, grupos, auto-join, campañas y anti-ban.
 // Rediseño visual: franja de KPIs, gauge de riesgo pre-vuelo, log de entrega por
 // grupo y controles de las mejoras P7-P8 (rotación, bump-comment, bold, proxy).

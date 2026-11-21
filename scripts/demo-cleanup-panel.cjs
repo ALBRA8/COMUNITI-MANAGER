@@ -4,7 +4,7 @@
  * marca, grupos, campaña y jobs demo respetando FKs, con auditoría de la casa.
  * Uso: node scripts/demo-cleanup-panel.cjs
  */
-const { PrismaClient } = require('@prisma/client');
+const { PrismaClient } = require('./lib/app-prisma.cjs');
 const p = new PrismaClient();
 
 (async () => {

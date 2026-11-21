@@ -1,14 +1,14 @@
 # FB-GROUPS Worker
 
-El Chrome que publica en grupos de Facebook para el chaleco COMUNITI-MANAGER.
-Mismo paquete para **PC local** (Chrome visible) o **VPS** (24/7). El chaleco no
+El Chrome que publica en grupos de Facebook para el agente COMUNITI-MANAGER.
+Mismo paquete para **PC local** (Chrome visible) o **VPS** (24/7). El agente no
 sabe dónde corre: solo habla HMAC-SHA256 con él.
 
 ## Requisitos
 
 - Node 20+ y Google Chrome instalado.
 - Un perfil de Chrome dedicado a este worker (se crea solo en `./chrome-profile`).
-- El chaleco COMUNITI-MANAGER corriendo y accesible.
+- El agente COMUNITI-MANAGER corriendo y accesible.
 
 ## Instalación
 
@@ -37,7 +37,7 @@ FB_JOIN_GAP_MAX=45
 
 ## Puesta en marcha (5 minutos)
 
-1. En el panel del chaleco → **Grupos de Facebook** → registra el worker con su
+1. En el panel del agente → **Grupos de Facebook** → registra el worker con su
    URL y copia el **secreto** (se muestra una sola vez).
 2. `npm start` en la PC/VPS.
 3. Abre `http://localhost:8765/health` para ver el estado.
@@ -45,7 +45,7 @@ FB_JOIN_GAP_MAX=45
    `AWAITING_SESSION`, inicia sesión de Facebook en la ventana de Chrome del
    worker (solo la primera vez; el perfil persiste).
 5. `curl -X POST http://localhost:8765/api/sync-groups` → importa tus grupos;
-   el chaleco los guarda automáticamente.
+   el agente los guarda automáticamente.
 6. Crea una campaña en el panel. El worker reclama jobs cada 60 s dentro de la
    ventana horaria y del techo diario con warmup.
 
@@ -75,7 +75,7 @@ El worker puede **unirse a grupos** desde una cola creada en el panel:
    exacto, sin datos inventados).
 
 Ritmo propio y conservador: hueco de **20-45 min** entre uniones (`FB_JOIN_GAP_MIN/MAX`),
-**techo diario 2/4/6** según antigüedad de la cuenta (lo aplica el chaleco),
+**techo diario 2/4/6** según antigüedad de la cuenta (lo aplica el agente),
 corte nocturno y pausa defensiva de 12 h compartidos con la publicación.
 Los grupos con cuestionario de admisión o cuya unión no se puede confirmar
 quedan en `FAILED`: **nunca se automatizan respuestas ni se fuerza nada**.
@@ -128,7 +128,7 @@ no hay reintentos ciegos.
 
 - No omite aprobaciones de administradores, no responde cuestionarios de
   admisión, no toca cuentas ajenas, no raspa feeds de terceros.
-- Si Facebook muestra un bloqueo o checkpoint, se pausa 12 h y alerta al chaleco.
+- Si Facebook muestra un bloqueo o checkpoint, se pausa 12 h y alerta al agente.
 - Si un grupo exige revisión del admin, el job queda `PENDING_REVIEW`: nunca
   se cuenta como publicado sin URL viva (o evidencia de envío documentada).
 - Si la campaña lleva imágenes y no se pueden adjuntar, falla con

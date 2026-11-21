@@ -7,27 +7,27 @@
 
 ## 1. Qué construimos
 
-**FB-GROUPS**, el **pantalón** del traje ALBRA: un módulo de publicación en
-grupos de Facebook que se pone el chaleco COMUNITI-MANAGER. Si el chaleco
-gestiona marcas, calendario, memoria, aprobaciones y métricas, el pantalón es
-la prenda que camina hacia los grupos: toma un borrador aprobado, lo adapta
-por grupo, lo publica a ritmo humano desde el navegador del usuario y vuelve
-con evidencia (URL del post o motivo exacto del fallo).
+**FB-GROUPS**, el módulo de publicación en grupos de Facebook del agente
+independiente COMUNITI-MANAGER. El agente gestiona marcas, calendario, memoria,
+aprobaciones y métricas; FB-GROUPS es su brazo ejecutor hacia los grupos: toma
+un borrador aprobado, lo adapta por grupo, lo publica a ritmo humano desde el
+navegador del usuario y vuelve con evidencia (URL del post o motivo exacto del
+fallo).
 
-Relación con el chaleco (contrato, no fusión): el módulo NO reimplementa
+Relación con el agente (contrato, no fusión): el módulo NO reimplementa
 calendario, memoria de marca, skills, aprobaciones, auditoría ni scheduler —
-los CONSUME del arnés. El módulo aporta solo lo que nadie tiene: la ejecución
-en grupos de Facebook vía navegador con sesión propia.
+los CONSUME del agente. El módulo aporta solo lo que su misión necesita: la
+ejecución en grupos de Facebook vía navegador con sesión propia.
 
 ## 2. Principio rector: no duplicar
 
 | Función | La aporta | El módulo la consume |
 |---|---|---|
-| Calendario y scheduling recurrente | Chaleco (Schedule, timezone IANA) | El ciclo dispara campañas; el worker no programa por su cuenta |
-| Memoria de marca (tono, vocabulario, prohibidos) | Chaleco (BrandMemory) | Las variantes respetan la marca activa |
-| Skills (procedimientos SKILL.md) | Chaleco (biblioteca Skill) | Nueva skill `fb-groups-posting` versionada |
-| Aprobación humana HITL | Chaleco (Approval, L1/L2/L3) | Ningún job sale sin el nivel de autonomía que corresponda |
-| Auditoría append-only | Chaleco (AuditEntry) | Cada claim/dispatch/report deja traza |
+| Calendario y scheduling recurrente | Agente (Schedule, timezone IANA) | El ciclo dispara campañas; el worker no programa por su cuenta |
+| Memoria de marca (tono, vocabulario, prohibidos) | Agente (BrandMemory) | Las variantes respetan la marca activa |
+| Skills (procedimientos SKILL.md) | Agente (biblioteca Skill) | Nueva skill `fb-groups-posting` versionada |
+| Aprobación humana HITL | Agente (Approval, L1/L2/L3) | Ningún job sale sin el nivel de autonomía que corresponda |
+| Auditoría append-only | Agente (AuditEntry) | Cada claim/dispatch/report deja traza |
 | Publicación oficial multi-red (Páginas, IG, TikTok…) | Postgale | Sin tocar: este módulo es SOLO grupos+perfil+Página-en-grupo |
 | Difusión masiva WhatsApp | WHATSPOWER-ULTRA | Sin relación |
 | Generación de assets | AGENTE-KREA | El worker publica, no crea imágenes |
@@ -35,7 +35,7 @@ en grupos de Facebook vía navegador con sesión propia.
 ## 3. Decisiones de diseño (firmadas por el dueño, 2026-10-28)
 
 1. **Worker portable**: mismo worker corre en PC local (Chrome headful con
-   perfil dedicado) o VPS (Chrome headful 24/7). El chaleco no sabe ni le
+   perfil dedicado) o VPS (Chrome headful 24/7). El agente no sabe ni le
    importa dónde; solo habla HMAC con él.
 2. **Método híbrido**: motor DOM (compositor visible + tecleo humano) por
    defecto; motor de peticiones web internas como fallback configurable por
@@ -43,16 +43,16 @@ en grupos de Facebook vía navegador con sesión propia.
 3. **Alcance v1 completo**: grupos donde el usuario es miembro + muro del
    perfil personal + publicar como Página en grupos donde la Página está
    presente.
-4. **Vive dentro del chaleco**: `modulo-fb-groups/` en COMUNITI-MANAGER,
+4. **Vive dentro del agente**: `modulo-fb-groups/` en COMUNITI-MANAGER,
    capa hermana de `especializacion-albra/`.
 5. **IA graduada por nivel de autonomía** (resuelve la duda del dueño — ver §4).
 6. **Anti-ban balanceado** (ver §6).
 
 ## 4. Nivel de IA: autopiloto GATEADO, no binario
 
-La duda del dueño ("¿cuánta IA?") se responde con el gobierno que el chaleco
+La duda del dueño ("¿cuánta IA?") se responde con el gobierno que el agente
 ya tiene. El módulo soporta los tres grados; el interruptor es el nivel de
-autonomía L1/L2/L3 del chaleco, no una preferencia suelta del módulo:
+autonomía L1/L2/L3 del agente, no una preferencia suelta del módulo:
 
 | Nivel | Qué hace la IA | Qué ve el humano |
 |---|---|---|
@@ -66,7 +66,7 @@ L3 exige techos configurados; sin techos, el sistema degrada a L2.
 ## 5. Arquitectura
 
 ```
-┌──────────────────────── COMUNITI-MANAGER (chaleco) ────────────────────────┐
+┌──────────────────────── COMUNITI-MANAGER (agente) ────────────────────────┐
 │  Panel UI (sección "Grupos de Facebook")                                   │
 │  API: /api/fb-workers · /api/fb-groups · /api/fb-campaigns ·               │
 │       /api/fb-jobs/claim · /api/fb-jobs/report                             │
@@ -82,14 +82,14 @@ L3 exige techos configurados; sin techos, el sistema degrada a L2.
 │  · Motores: dom (default) | internal (fallback por campaña)                │
 │  · Anti-ban v1 (§6) · Spintax determinista por (job, grupo)                │
 │  · Primer comentario · Group sync por DOM + refresco manual                │
-│  · Detección: advertencia/desafío/checkpoint → pausa 12h + alerta chaleco  │
+│  · Detección: advertencia/desafío/checkpoint → pausa 12h + alerta al agente  │
 │  · Estados: AWAITING_SESSION · IDLE · RUNNING · PAUSED_ANTI_BAN ·          │
 │    CHALLENGE_DETECTED · OFFLINE                                            │
 └────────────────────────────────────────────────────────────────────────────┘
 ```
 
 Dirección de las flechas: el worker **tira** de jobs (funciona detrás del NAT
-de una PC doméstica) y **empuja** reportes firmados. El chaleco otorga leases
+de una PC doméstica) y **empuja** reportes firmados. El agente otorga leases
 con expiración para que ningún job se publique dos veces.
 
 ## 6. Motor anti-ban v1 (postura balanceada)
@@ -116,7 +116,7 @@ con expiración para que ningún job se publique dos veces.
 
 ## 7. Contratos y estados de honestidad
 
-Contratos nuevos del registro de herramientas del chaleco:
+Contratos nuevos del registro de herramientas del agente:
 - `fb_groups_post` (riesgo ALTO): publica en grupo/perfil/Página-en-grupo.
   Estados: `CONNECTED` (worker vivo y con sesión), `AWAITING_SESSION`
   (worker vivo, sin login), `AWAITING_WORKER` (no hay worker registrado),
@@ -124,7 +124,7 @@ Contratos nuevos del registro de herramientas del chaleco:
 - `fb_groups_sync` (riesgo MEDIO): importa/refresca lista de grupos.
 - `fb_groups_report` (riesgo BAJO): ingesta de resultados del worker.
 
-Reglas heredadas del chaleco: idempotencia real por leases con expiración
+Reglas heredadas del agente: idempotencia real por leases con expiración
 (los reportes solo se aplican desde LEASED; un reintento duplicado se ignora
 con traza `*_REPORT_IGNORED` y no re-consume techos), HMAC-SHA256 en ambos
 sentidos con comparación en tiempo constante, append-only en auditoría,
@@ -151,7 +151,7 @@ exacto; un POSTED sin URL se degrada a FAILED por honestidad).
 - **Worker**: Node 20+ · Playwright (canal Chrome real, no Chromium desnudo) ·
   servidor HTTP mínimo nativo · portable con `npm start` y flags
   `--mode pc|vps` + `FB_WORKER_SECRET`.
-- **Chaleco**: lo existente (Next.js 16 + TS + Prisma/SQLite + Tailwind 4);
+- **Agente**: lo existente (Next.js 16 + TS + Prisma/SQLite + Tailwind 4);
   6 modelos Prisma nuevos; 5 rutas API nuevas; 1 sección de panel nueva.
 - **IA de variantes**: z-ai-web-dev-sdk (ya en el stack), con fallback a
   reglas si no hay clave — nunca bloquea el spintax determinista.
@@ -165,7 +165,7 @@ exacto; un POSTED sin URL se degrada a FAILED por honestidad).
   restricción de la cuenta es del dueño de la cuenta y queda declarado aquí.**
 - No afiliado ni respaldado por Meta. Sin scraping de terceros. Sin
   interacción con cuentas ajenas.
-- La sesión vive en el perfil Chrome local del worker; el chaleco nunca ve
+- La sesión vive en el perfil Chrome local del worker; el agente nunca ve
   cookies ni contraseñas (solo resultados).
 
 ## 11. Fuera de alcance (explícito)
@@ -183,7 +183,7 @@ exacto; un POSTED sin URL se degrada a FAILED por honestidad).
 
 - **P1** Worker: esqueleto + HMAC + health + sesión + group sync + motor DOM +
   spintax + ritmo + techo diario + reportes firmados. *(hecho)*
-- **P2** Chaleco: modelos Prisma, rutas claim/report/workers/groups/campaigns,
+- **P2** Agente: modelos Prisma, rutas claim/report/workers/groups/campaigns,
   sección de panel, auditoría e idempotencia. *(hecho)*
 - **P3** IA graduada (reescritura L2/L3), primer comentario, modo Página-en-grupo,
   muro personal. *(hecho)* Los health scores numéricos por grupo NO llegaron a
@@ -282,7 +282,7 @@ exacto; un POSTED sin URL se degrada a FAILED por honestidad).
   429 como telemetría con Retry-After (2 en la misma publicación = parada y
   escalado), campos opcionales por red (sin ceros inventados) y techos propios
   como criterio previo a todo envío real. **P11 v2-lite** — llms.txt propio
-  (/llms.txt) con la superficie agéntica del chaleco y sus reglas permanentes.
+  (/llms.txt) con la superficie agéntica del agente y sus reglas permanentes.
   Regresión completa 194/194 (P2 26, E2E 21, P7 25, P1 11, P6 24, P8-P12 24,
   besttime 10, meta-policy 53) + build de producción + lint 0 errores. La
   vigilancia real dejó un hallazgo pendiente de análisis HUMANO en el panel:

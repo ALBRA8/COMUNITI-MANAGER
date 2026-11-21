@@ -1,4 +1,4 @@
-// HMAC-SHA256 del worker (mismo algoritmo que el chaleco, comparación en tiempo constante).
+// HMAC-SHA256 del worker (mismo algoritmo que el agente, comparación en tiempo constante).
 import crypto from 'node:crypto';
 
 export function sign(body, secret) {

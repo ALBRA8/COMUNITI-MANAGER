@@ -30,7 +30,7 @@ async function text(method, path) {
 (async () => {
   console.log('P8-P12 (destripe Metricool) — flujo API completo\n');
 
-  const { PrismaClient } = require('@prisma/client');
+  const { PrismaClient } = require('./lib/app-prisma.cjs');
   const prisma = new PrismaClient();
 
   // ── P12: biblioteca de media ────────────────────────────────────
