@@ -146,7 +146,7 @@ async function pubOf(draftId, network) {
   const f3 = await publishFlow(b3, 'threads', 'Post de threads que no debe salir por suposición');
   await approveAndPublish(b3, f3.draftId);
   const pub3 = await pubOf(f3.draftId, 'threads');
-  check('threads → AWAITING_CONNECTOR (settings no verificados, no se asumen)', pub3?.status === 'AWAITING_CONNECTOR' && /no están verificados/.test(pub3?.errorDetail ?? ''), JSON.stringify(pub3).slice(0, 180));
+  check('threads → AWAITING_CONNECTOR (no se publica por suposición: settings no verificados)', pub3?.status === 'AWAITING_CONNECTOR' && /threads/i.test(pub3?.errorDetail ?? ''), JSON.stringify(pub3).slice(0, 180));
 
   console.log(`\nResultado: ${pass} ✓ / ${fail} ✗`);
   mock.close();

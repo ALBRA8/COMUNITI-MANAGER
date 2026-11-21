@@ -534,3 +534,18 @@ Work Log:
 
 Stage Summary:
 - El operador ya puede VER el panel con la identidad corregida: 8 capturas en download/capturas-panel/. Repo al día: P19-IDENTIDAD-02 (3c4357f) en origin + este registro.
+
+## [2026-11-21] Task ID: 30-mision-cierre-comuniti-manager
+
+Agent: agente principal (Z.ai)
+Task: "MISIÓN: cerrar el proyecto COMUNITI-MANAGER como agente independiente de redes sociales... un commit por punto, con push verificado... informe final con evidencia"
+
+Work Log:
+- FASE 0 (90430bc): línea base real en repo con BD virgen — npm install 930 pkgs + lockfile, prisma generate+push, tsc 0, 6 errores eslint set-state-in-effect corregidos SIN desactivar la regla (useSyncExternalStore, IIFE asíncrona, rAF), build standalone OK, baterías 236/236 + cola limpia. Fixes estructurales descubiertos por la BD virgen: scripts/lib/app-prisma.cjs (los scripts de raíz escribían en la BD del workspace por resolución de Node), runner portable real, import dual de test-besttime, bootstrap honesto de fuentes.
+- FASE 1 (dab00f8, 52ae7a2): identidad única en FICHA/README/worker README/especializacion-albra (decisión documentada: capa OPCIONAL con evidencia de 0 imports y 236/236 sin semilla); PRODUCTION_READINESS revalidado con números reales, AUDIT_REPORT con sección de cierre, .env.example de raíz creado (excepción !.env.example en .gitignore).
+- FASE 2 (0a1e911, c1592a9, 3778d45, 3dad809): Telegram ejecutor REAL (sendMessage/sendPhoto, techos TELEGRAM_POST fijos en código con lib/telegram-rate.ts, HITL, idempotencia, message_id como evidencia, 429/403 honestos) 16/16; WhatsApp envío REAL en el conector propio (cola con gap humano, techo WHATSAPP_SEND 200/día solo bajable, doble cerradura de pausa global, entregas firmadas HMAC a /api/whatsapp/delivery) 18/18; bug de honestidad corregido en toolsForContract (whatsapp.session/fbgroups.worker se despachaban CONNECTED sin conector vivo); Postiz implementado según docs oficiales (auth sin Bearer, /public/v1, settings por red, upload-from-url) 9/9; Postgale/PostLake retirados a CAPACITY_UNAVAILABLE sin documentación verificable; fetch_comments real vía ScrapeCreators /v2; punto 8: sin contratos declarados sin ejecutor (whatspower.broadcast y record_experiment retirados) + scripts/verify-contratos.cjs como garantía estructural (14 tools, 0 huérfanos).
+- FASE 3 (6cbaa6f, 690d4c5, 0ee2dd4): hello-world fuera, paquete comuniti-manager v1.0.0, db:push sin --accept-data-loss, runtime node único; CI en GitHub Actions (npm ci → prisma → tsc → lint → build → contratos → batería estándar + cola → canales contra mocks → besttime); DEPLOY.md única guía del operador (secretos, canales, rotación del token expuesto, cambio CRÍTICO yt, riesgo de baneo).
+- REGRESIÓN FINAL sobre el estado definitivo: 269/269 checks (P2 26, E2E 25, joins 24, media 11, mejoras 25, P8-P12 24, meta-policy 54, integraciones 27, telegram 16, whatsapp 18, postiz 9, besttime 10) + COLA LIMPIA + contratos honestos. tsc 0, eslint 0, build OK.
+
+Stage Summary:
+- El agente publica DE VERDAD por sus canales propios (Telegram Bot API, WhatsApp QR propio, grupos FB con worker, IG/FB vía Postiz) con HITL, techos por red, evidencia firmada y el motor de 6 estados gobernando todo lo Meta. Pendiente del operador: credenciales reales, worker FB, conector WhatsApp en su PC/VPS y revocar el token de GitHub expuesto.

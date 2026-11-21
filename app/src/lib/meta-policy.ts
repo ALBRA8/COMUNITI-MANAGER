@@ -670,7 +670,7 @@ export const NETWORK_CAPS: NetworkCapEntry[] = [
     platformStatus: 'NO_VERIFICADO',
     ourCap: '200 envíos/día por número conectado (default; el operador solo puede BAJARLO con WHATSAPP_DAILY_CAP); gap ≥ 6 s con jitter entre envíos; pausa global y HITL del motor aplican',
     capSource: 'DEFENSIVO_PROPIO',
-    calibration: 'Whapi/Wati-style: difusión masiva con anti-ban propio; sin cifra oficial pública que capturar',
+    calibration: 'Blotato: difusión estilo blast con anti-ban propio (sin cifra pública verificada en su doc); WhatsPower-ULTRA del ecosistema opera el mismo patrón con escudo de 5 capas — referencia de terceros, NO fuente de verdad',
     rationale: 'Protocolo WhatsApp Web NO oficial: la protección del número es el criterio rector (compliant > continuidad). Techo conservador + ritmo humano + pausa global; sin endpoint público de cuota, el techo es de convivencia y se recalibra con la respuesta real de la red.',
     liveCheck: 'Respuestas 4xx/5xx del protocolo o restricciones del número: parada y escalado humano',
   },
