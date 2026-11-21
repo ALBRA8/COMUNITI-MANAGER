@@ -659,6 +659,21 @@ export const NETWORK_CAPS: NetworkCapEntry[] = [
     rationale: 'Telegram es la excepción estructural (Bot API diseñada a propósito para software): los límites oficiales están publicados y verificados. El margen propio en difusión absorbe ráfagas sin rozar el 429.',
     liveCheck: 'Respuesta 429 con parámetros retry_after del Bot API (señal directa de la red)',
   },
+  {
+    operation: 'WHATSAPP_SEND',
+    network: 'WhatsApp (sesión propia)',
+    product: 'WHATSAPP',
+    scope: 'por número conectado / día rodante',
+    platformLimit: null,
+    platformSource: null,
+    platformVerifiedAt: null,
+    platformStatus: 'NO_VERIFICADO',
+    ourCap: '200 envíos/día por número conectado (default; el operador solo puede BAJARLO con WHATSAPP_DAILY_CAP); gap ≥ 6 s con jitter entre envíos; pausa global y HITL del motor aplican',
+    capSource: 'DEFENSIVO_PROPIO',
+    calibration: 'Whapi/Wati-style: difusión masiva con anti-ban propio; sin cifra oficial pública que capturar',
+    rationale: 'Protocolo WhatsApp Web NO oficial: la protección del número es el criterio rector (compliant > continuidad). Techo conservador + ritmo humano + pausa global; sin endpoint público de cuota, el techo es de convivencia y se recalibra con la respuesta real de la red.',
+    liveCheck: 'Respuestas 4xx/5xx del protocolo o restricciones del número: parada y escalado humano',
+  },
 ];
 
 function capForOperation(operation: string): NetworkCapEntry | null {
@@ -803,7 +818,7 @@ export async function authorize(input: AuthorizeInput): Promise<AuthorizeResult>
   //    aprobación humana pre-vuelo explícita.
   const WRITE_OPERATIONS = new Set([
     'FB_GROUP_POST', 'FB_CAMPAIGN_APPROVAL', 'FB_JOIN_GROUP',
-    'X_POST', 'TT_POST', 'YT_UPLOAD', 'TELEGRAM_POST', 'IG_POST',
+    'X_POST', 'TT_POST', 'YT_UPLOAD', 'TELEGRAM_POST', 'IG_POST', 'WHATSAPP_SEND',
   ]);
   const needsHuman = WRITE_OPERATIONS.has(operation);
   if (needsHuman && !input.approvedByHuman) {

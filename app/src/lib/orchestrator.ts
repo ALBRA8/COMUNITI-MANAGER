@@ -325,10 +325,19 @@ async function runPhase(
         }, { agent: 'publisher', brandId: memory.id, taskId, idempotencyKey: idemKey });
 
         if (res.outcome === 'OK') {
-          const externalId = (res.data as { id?: string })?.id ?? null;
-          await db.publication.update({ where: { id: pub.id }, data: { status: 'PUBLISHED', publishedAt: new Date(), externalId } });
-          await db.contentDraft.update({ where: { id: draft.id }, data: { status: 'PUBLISHED' } });
-          results.push({ network: v.network, status: 'PUBLISHED', externalId });
+          const data = res.data as { id?: string; asyncDelivery?: boolean } | null;
+          const externalId = data?.id ?? null;
+          if (data?.asyncDelivery) {
+            // Envío EN COLA en un conector propio (WhatsApp): la entrega la
+            // confirma un reporte FIRMADO del conector (/api/whatsapp/delivery).
+            // Nunca PUBLISHED sin evidencia: la publicación queda PUBLISHING.
+            await db.publication.update({ where: { id: pub.id }, data: { status: 'PUBLISHING', externalId } });
+            results.push({ network: v.network, status: 'EN_COLA', note: 'Encolado en el conector propio; el reporte firmado de entrega confirmará DELIVERED/FAILED', externalId });
+          } else {
+            await db.publication.update({ where: { id: pub.id }, data: { status: 'PUBLISHED', publishedAt: new Date(), externalId } });
+            await db.contentDraft.update({ where: { id: draft.id }, data: { status: 'PUBLISHED' } });
+            results.push({ network: v.network, status: 'PUBLISHED', externalId });
+          }
         } else if (res.outcome === 'CAPACITY_UNAVAILABLE') {
           await db.publication.update({ where: { id: pub.id }, data: { status: 'AWAITING_CONNECTOR', errorDetail: res.reason ?? '' } });
           results.push({ network: v.network, status: 'AWAITING_CONNECTOR', note: res.reason });

@@ -63,20 +63,20 @@ export const TOOLS: ToolDefinition[] = [
     key: 'telegram.bot',
     provider: 'Telegram Bot API (oficial)',
     category: 'PUBLISH',
-    description: 'Canal Telegram: publicación en canales y grupos propios vía Bot API oficial (sendMessage/sendPhoto/sendMediaGroup). Excepción estructural: API diseñada a propósito para software, gratuita y con límites públicos (el motor ya vigila sus fuentes y aplica techos TELEGRAM_POST verificados). Configuración y prueba reales hoy; el despacho programado se activa con el ejecutor del canal.',
-    contracts: ['get_connection_status'],
+    description: 'Canal Telegram: publicación real en canales y grupos propios vía Bot API oficial (sendMessage/sendPhoto) con límites oficiales verificados (TELEGRAM_POST: 1 msg/seg por chat, 20 msg/min por grupo, 429 → backoff honesto), HITL, idempotencia y evidencia message_id. Excepción estructural: API diseñada a propósito para software, gratuita y con límites públicos.',
+    contracts: ['get_connection_status', 'publish_post'],
     envKeys: ['TELEGRAM_BOT_TOKEN'],
-    capabilities: ['canales-telegram', 'grupos-telegram', 'bot-api-oficial', 'techos-TELEGRAM_POST-en-motor'],
+    capabilities: ['canales-telegram', 'grupos-telegram', 'bot-api-oficial', 'techos-TELEGRAM_POST-en-motor', 'envio-real-con-message_id'],
     costNote: 'Sin coste (API oficial gratuita)',
   },
   {
     key: 'whatsapp.session',
     provider: 'Conector WhatsApp propio (sesión QR)',
     category: 'PUBLISH',
-    description: 'Canal WhatsApp del agente independiente: sesión propia vinculada por QR (protocolo WhatsApp Web, sin navegador — la política §5.1 de automatización de navegador no aplica). El conector (scripts/whatsapp-daemon.cjs) corre en el PC/VPS del operador y reporta estado firmado al panel; la sesión queda guardada. Protocolo no oficial: WhatsApp puede restringir el número ante reportes o volumen abusivo; el motor aplica pausa global y techos a todo envío. Configuración, QR y prueba reales hoy; el despacho programado se activa con el ejecutor del canal.',
-    contracts: ['get_connection_status'],
+    description: 'Canal WhatsApp del agente independiente: sesión propia vinculada por QR (protocolo WhatsApp Web, sin navegador — la política §5.1 de automatización de navegador no aplica). El conector (scripts/whatsapp-daemon.cjs) corre en el PC/VPS del operador y reporta estado y ENTREGAS firmadas HMAC al panel; la sesión queda guardada. Envío real (texto/media) con cola, gap humano ≥6 s, techo WHATSAPP_SEND y pausa global. Protocolo no oficial: WhatsApp puede restringir el número ante reportes o volumen abusivo.',
+    contracts: ['get_connection_status', 'publish_post'],
     envKeys: [],
-    capabilities: ['sesion-qr-propia', 'protocolo-whatsapp-web', 'sin-navegador', 'techos-en-motor'],
+    capabilities: ['sesion-qr-propia', 'protocolo-whatsapp-web', 'sin-navegador', 'envio-cola-con-entrega-firmada', 'techos-WHATSAPP_SEND-en-motor'],
     costNote: 'Sin coste directo (usa la cuenta propia del operador)',
   },
   {
@@ -208,11 +208,28 @@ export async function syncRegistry() {
   }
 }
 
-/** Herramientas que soportan un contrato y están disponibles. */
+/** Herramientas que soportan un contrato y están disponibles.
+ * El estado de los canales con sesión/worker propio (whatsapp.session,
+ * fbgroups.worker) NO depende de envKeys: se consulta su fuente de verdad
+ * (BD) — bug de honestidad corregido con la Fase 2 (punto 6): antes un
+ * computeStatus genérico con envKeys vacíos los marcaba CONNECTED y el
+ * despacho llegaba a un conector caído. */
 export async function toolsForContract(contract: Contract) {
-  return TOOLS.filter(
-    (t) => t.contracts.includes(contract) && computeStatus(t) === 'CONNECTED'
-  );
+  const out: ToolDefinition[] = [];
+  for (const t of TOOLS) {
+    if (!t.contracts.includes(contract)) continue;
+    let status = computeStatus(t);
+    if (t.key === 'whatsapp.session') {
+      const live = await db.whatsappSession.findFirst({
+        where: { state: 'CONNECTED', lastSeenAt: { gte: new Date(Date.now() - 120_000) } },
+      });
+      status = live ? 'CONNECTED' : 'AWAITING_CREDENTIALS';
+    } else if (t.key === 'fbgroups.worker') {
+      status = (await db.fbWorker.count()) > 0 ? 'CONNECTED' : 'AWAITING_CREDENTIALS';
+    }
+    if (status === 'CONNECTED') out.push(t);
+  }
+  return out;
 }
 
 /** ¿Hay alguna herramienta disponible para este contrato? */
