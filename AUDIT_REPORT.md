@@ -1,8 +1,8 @@
 # AUDIT REPORT — Misión de auditoría integral, corrección autónoma y preparación para producción
 
-Proyecto: COMUNITI-MANAGER (arnés de community management FB-GROUPS + Meta Policy Intelligence)
-Entregable canónico: este repositorio (app/ + scripts/ + modulo-fb-groups/). Estado final: commit 8f5d5cd (main = origin/main).
-Fecha: 2026-11-06. Método: 5 auditores independientes por ciclo, consolidación verificada, corrección de causa raíz, re-auditoría desde cero hasta 2 pasadas limpias consecutivas.
+Proyecto: COMUNITI-MANAGER (agente independiente de redes sociales: publicación multi-canal + Meta Policy Intelligence)
+Entregable canónico: este repositorio (app/ + scripts/ + modulo-fb-groups/). Estado final de la misión de auditoría: commit 8f5d5cd (main = origin/main). Estado actual del repo: ver §"Fase de cierre" al final (revalidación 2026-11-21 con números reales).
+Fecha: 2026-11-06 (auditoría) · Revalidación: 2026-11-21 (sesión de cierre). Método: 5 auditores independientes por ciclo, consolidación verificada, corrección de causa raíz, re-auditoría desde cero hasta 2 pasadas limpias consecutivas.
 
 ## 1. Estado inicial
 
@@ -84,3 +84,23 @@ Rama main; commits de la misión: cffef28 → 6eb9c1b → 6dceff5 → 4eaf69d �
 ## 14. Evaluación final
 
 **PRODUCTION READY (software)**: criterio de salida cumplido — 2 pasadas limpias consecutivas (ciclos 8 y 9) sin hallazgos confirmados ni regresiones; 199/199 + tsc 0 + lint 0 + build + cola limpia + despliegue standalone verificado en vivo. La puesta en marcha real (worker + credenciales + proxy con token) es operación del operador, documentada en PRODUCTION_READINESS.md.
+
+---
+
+## Fase de cierre (2026-11-21) — revalidación de línea base con números reales
+
+> Esta sección NO modifica el histórico anterior: lo revalida contra el repo
+> entregado con base de datos virgen. Las cifras de 199/199 arriba corresponden
+> a la batería de aquella fecha (8 suites); la batería vigente tiene 10 suites.
+
+Ejecutado en esta sesión sobre el repo (commit de partida `dab00f8`, BD virgen):
+
+- Instalación: `npm install` → **930 paquetes**, `package-lock.json` generado (npm único gestor; `npm ci` reproducible).
+- Prisma: generate (client v6.19.2) + db push OK sobre `app/prisma/db/harness.db` virgen.
+- `npx tsc --noEmit` → **0 errores**. `npm run lint` → de **6 errores reales** (`react-hooks/set-state-in-effect`, react-hooks v6) a **0 problemas**, sin desactivar la regla.
+- `npm run build` standalone OK (Next 16.1.3, Turbopack, `ignoreBuildErrors:false`).
+- Baterías vigentes (10 suites + cola-check, desde la raíz del repo): P2 **26/26** · E2E FB **25/25** · joins **24/24** · media **11/11** · mejoras **25/25** · P8-P12 **24/24** · meta-policy **54/54** · integraciones **27/27** · whatsapp-session **10/10** · besttime **10/10** → **236/236 checks, 0 fallos** + `cola-check` **COLA LIMPIA** (18 campañas, 0 jobs vivos).
+- Fallos iniciales de esta revalidación (no existían en la auditoría original porque la BD histórica los enmascaraba) corregidos de causa raíz: (1) los scripts de la raíz que usan Prisma resolvían por Node el cliente de un directorio PADRE ajeno y escribían en OTRA base de datos → cargador `scripts/lib/app-prisma.cjs`; (2) `run-with-server.sh` ejecutaba los tests desde `app/` donde no existen → ahora server desde `app/` y tests desde la raíz; (3) `test-besttime.ts` importaba la lib por ruta del workspace → import dual-layout (Node ≥ 24 o bun); (4) `test-meta-policy.cjs` asumía fuentes ya verificadas → bootstrap con verificación REAL contra meta.com (6 fuentes HTTP 200, sin fingir frescura).
+- Creación de `.env.example` de raíz (citado por README y PRODUCTION_READINESS, no existía).
+
+Veredicto de cierre: **PRODUCTION READY (software) revalidado con BD virgen** — las operaciones reales de publicación (credenciales por canal, worker FB, conector WhatsApp, proxy+tokens, rotación del token de GitHub expuesto) quedan documentadas como operación del operador en `DEPLOY.md`.
