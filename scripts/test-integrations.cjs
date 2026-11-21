@@ -28,7 +28,7 @@ async function j(method, path, body) {
   const g = await j('GET', '/api/integrations');
   check('GET responde 200', g.status === 200, JSON.stringify(g.data).slice(0, 120));
   check('LLM embebido reportado activo', g.data.llm?.connected === true, JSON.stringify(g.data.llm));
-  check('lista de integraciones es el registro completo (15)', Array.isArray(g.data.integrations) && g.data.integrations.length === 15, `obtenido ${g.data.integrations?.length}`);
+  check('lista de integraciones es el registro completo (14 — whatspower.broadcast retirado por contrato sin ejecutor, punto 8)', Array.isArray(g.data.integrations) && g.data.integrations.length === 14, `obtenido ${g.data.integrations?.length}`);
   check('cuentas de integración son honestas (connected + awaiting = total)',
     g.data.counts?.total === g.data.counts?.connected + g.data.counts?.awaiting, JSON.stringify(g.data.counts));
   check('todas las tarjetas traen missingEnv calculado',
@@ -43,8 +43,8 @@ async function j(method, path, body) {
 
   // Tarjetas clave por categoría de configuración
   const byKey = new Map((g.data.integrations ?? []).map((i) => [i.key, i]));
-  check('vía WhatsApp presente (whatspower.broadcast) con su variable WHATPOWER_URL',
-    byKey.get('whatspower.broadcast')?.envKeys?.includes('WHATPOWER_URL') === true);
+  check('whatspower.broadcast retirado del registro (punto 8: contrato sin ejecutor — mundo CRM-ALBRA)',
+    !byKey.has('whatspower.broadcast'));
   check('canal Telegram presente (telegram.bot) con su variable TELEGRAM_BOT_TOKEN',
     byKey.get('telegram.bot')?.envKeys?.includes('TELEGRAM_BOT_TOKEN') === true);
   check('Telegram sin token reporta AWAITING_CREDENTIALS (no se finge conexión)',
@@ -80,8 +80,8 @@ async function j(method, path, body) {
     tWait.data.outcome === 'AWAITING_CREDENTIALS' && /POSTGALE_URL/.test(tWait.data.reason ?? ''), JSON.stringify(tWait.data));
 
   const tWa = await j('POST', '/api/integrations', { action: 'test', tool: 'whatspower.broadcast' });
-  check('whatspower sin WHATPOWER_URL → AWAITING_CREDENTIALS con la variable nombrada',
-    tWa.data.outcome === 'AWAITING_CREDENTIALS' && /WHATPOWER_URL/.test(tWa.data.reason ?? ''), JSON.stringify(tWa.data));
+  check('whatspower.broadcast ya no existe → error honesto "Herramienta desconocida" (sin contrato decorativo)',
+    /desconocida/i.test(tWa.data?.error ?? ''), JSON.stringify(tWa.data));
 
   const tWorker = await j('POST', '/api/integrations', { action: 'test', tool: 'fbgroups.worker' });
   check('fbgroups.worker sin workers → AWAITING_CREDENTIALS; con workers → OK',
