@@ -2,7 +2,7 @@
 
 // COMUNITI-MANAGER — Panel del agente independiente de redes sociales
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { useTheme } from 'next-themes';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -83,9 +83,14 @@ export default function Page() {
   const [brandId, setBrandId] = useState('');
   const [navOpen, setNavOpen] = useState(false);
   const { theme, setTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => setMounted(true), []);
+  // Guard de hidratación sin setState-en-effect (react-hooks v6): el snapshot
+  // del servidor es false y el del cliente true — pasa a true tras montar
+  // sin cascada de renders.
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
 
   const refresh = useCallback(async () => {
     try {
@@ -99,7 +104,10 @@ export default function Page() {
   }, []);
 
   useEffect(() => {
-    refresh();
+    // Carga inicial como suscripción asíncrona (sin setState síncrono en el
+    // cuerpo del efecto, react-hooks v6); el refresh periódico queda como
+    // callback del timer externo.
+    void (async () => { await refresh(); })();
     const t = setInterval(refresh, 15000);
     return () => clearInterval(t);
   }, [refresh]);

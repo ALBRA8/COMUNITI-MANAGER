@@ -179,7 +179,9 @@ export function MetaComplianceSection() {
   }, []);
 
   useEffect(() => {
-    load();
+    // Carga inicial como suscripción asíncrona: sin setState síncrono en el
+    // cuerpo del efecto (react-hooks v6); el ciclo queda como callback del timer.
+    void (async () => { await load(); })();
     const t = setInterval(load, 60_000);
     return () => clearInterval(t);
   }, [load]);

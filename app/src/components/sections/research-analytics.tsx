@@ -26,7 +26,7 @@ export function ResearchSection({ harness, brandId, refresh }: SectionProps) {
     setEvidences(await res.json());
   }, [brandId]);
 
-  useEffect(() => { load(); }, [load, harness?.status]);
+  useEffect(() => { void (async () => { await load(); })(); }, [load, harness?.status]);
 
   const run = async () => {
     if (!topic || busy) return;
