@@ -9,11 +9,18 @@
  *  - Reporta el estado al panel (DISCONNECTED | CONNECTING | QR_WAITING |
  *    CONNECTED) firmado con HARNESS_WEBHOOK_SECRET — el mismo estándar HMAC
  *    de la malla de webhooks. Sin navegador: la política §5.1 no aplica.
+ *  - ENVÍA con cola: el panel encola (POST /send) y este conector despacha a
+ *    ritmo humano (gap ≥ WHATSAPP_MIN_GAP_SECONDS con jitter, techo diario
+ *    WHATSAPP_DAILY_CAP), respetando la PAUSA GLOBAL del panel y confirmando
+ *    cada entrega con un reporte FIRMADO a /api/whatsapp/delivery
+ *    (DELIVERED con waMessageId / FAILED con motivo). Sin reporte firmado no
+ *    hay éxito: la evidencia de cada envío vive en la auditoría del panel.
  *  - La sesión queda guardada en prisma/db/whatsapp-session: no se re-escanea
  *    el QR al reiniciar. Bórrala para desvincular.
  *
  * Honestidad: protocolo NO oficial. WhatsApp puede restringir el número ante
- * reportes o volumen abusivo; el motor del panel aplica pausa global y techos.
+ * reportes o volumen abusivo; el motor del panel aplica pausa global y techos
+ * (WHATSAPP_SEND), y este conector añade su propia cola y ritmo humano.
  *
  * Uso (desde app/ o raíz del proyecto, donde esté node_modules):
  *   node scripts/whatsapp-daemon.cjs
@@ -21,28 +28,101 @@
  *   HARNESS_URL (default http://localhost:3000)
  *   HARNESS_WEBHOOK_SECRET (si el panel lo exige, obligatoria la firma)
  *   WHATSAPP_DAEMON_NAME (default wa-local)
- *   WHATSAPP_DAEMON_PORT (default 3010, http local de estado/logout)
+ *   WHATSAPP_DAEMON_PORT (default 3010, http local de estado/envío/logout)
+ *   WHATSAPP_DAEMON_TOKEN (si se define, POST /send exige x-daemon-token)
+ *   WHATSAPP_DAILY_CAP (default 200 envíos/día; solo puede bajarse)
+ *   WHATSAPP_MIN_GAP_SECONDS (default 6 s entre envíos, con jitter)
  */
 const path = require('path');
 const http = require('http');
-const { createHmac } = require('node:crypto');
+const { createHmac, timingSafeEqual } = require('node:crypto');
 
 const HARNESS_URL = (process.env.HARNESS_URL || 'http://localhost:3000').replace(/\/$/, '');
 const SECRET = process.env.HARNESS_WEBHOOK_SECRET || '';
 const NAME = process.env.WHATSAPP_DAEMON_NAME || 'wa-local';
 const PORT = Number(process.env.WHATSAPP_DAEMON_PORT || 3010);
+const DAEMON_TOKEN = process.env.WHATSAPP_DAEMON_TOKEN || '';
+const DAILY_CAP = (() => {
+  // Techo fijo 200/día; el operador solo puede BAJARLO (misma regla que el motor).
+  const env = Number(process.env.WHATSAPP_DAILY_CAP ?? '');
+  if (!Number.isFinite(env) || env <= 0) return 200;
+  return Math.min(200, Math.floor(env));
+})();
+const MIN_GAP_MS = (() => {
+  const env = Number(process.env.WHATSAPP_MIN_GAP_SECONDS ?? '');
+  if (!Number.isFinite(env) || env <= 0) return 6000;
+  return Math.max(1000, Math.min(600, Math.floor(env) * 1000));
+})();
 const AUTH_DIR = path.join(__dirname, '..', 'prisma', 'db', 'whatsapp-session');
+
+// ─── Cola de envío con ritmo humano ──────────────────────────────
+const sendQueue = [];
+let lastSendAt = 0;
+let dailyCount = 0;
+let dayKey = new Date().toDateString();
+let panelPaused = false;
+let lastPauseCheckAt = 0;
+
+function dailyCapReached() {
+  const today = new Date().toDateString();
+  if (today !== dayKey) { dayKey = today; dailyCount = 0; }
+  return dailyCount >= DAILY_CAP;
+}
+
+async function refreshPanelPaused() {
+  // Consulta la pausa global del panel (máx cada 10 s): mientras esté en
+  // pausa, la cola NO despacha nada (doble cerradura con el firewall).
+  if (Date.now() - lastPauseCheckAt < 10_000) return;
+  lastPauseCheckAt = Date.now();
+  try {
+    const r = await fetch(`${HARNESS_URL}/api/harness`, { signal: AbortSignal.timeout(4000) });
+    const d = await r.json().catch(() => ({}));
+    panelPaused = d?.paused === true;
+  } catch { /* panel caído: se mantiene el último valor conocido */ }
+}
+
+function signedPost(panelPath, bodyObj) {
+  const raw = JSON.stringify(bodyObj);
+  const headers = { 'Content-Type': 'application/json' };
+  if (SECRET) headers['x-harness-signature'] = 'sha256=' + createHmac('sha256', SECRET).update(raw, 'utf8').digest('hex');
+  return fetch(`${HARNESS_URL}${panelPath}`, { method: 'POST', headers, body: raw })
+    .then((r) => r.json().catch(() => ({})))
+    .catch((e) => ({ error: e.message }));
+}
+
+async function reportDelivery(entry, status, extra = {}) {
+  const resp = await signedPost('/api/whatsapp/delivery', {
+    daemonName: NAME,
+    jobId: entry.jobId,
+    chatId: entry.to,
+    status,
+    ...extra,
+  });
+  console.log(`[wa-daemon] entrega ${status} de ${entry.to} (jobId=${entry.jobId ?? 'sin-id'})${resp?.ok ? '' : ` — RECHAZO del panel: ${resp?.error ?? 'respuesta ' + JSON.stringify(resp).slice(0, 120)}`}`);
+}
+
+// Resolución de dependencias desde el layout del repo (scripts/ en la raíz,
+// node_modules en app/): mismo criterio que scripts/lib/app-prisma.cjs.
+const fsMod = require('node:fs');
+function requireFromApp(modName) {
+  const candidates = [
+    path.join(__dirname, '..', 'app', 'node_modules', modName),
+    path.join(__dirname, '..', 'node_modules', modName),
+  ];
+  for (const c of candidates) if (fsMod.existsSync(c)) return require(c);
+  return require(modName);
+}
 
 let baileys;
 try {
-  baileys = require('@whiskeysockets/baileys');
+  baileys = requireFromApp('@whiskeysockets/baileys');
 } catch (e) {
-  console.error('[wa-daemon] Falta @whiskeysockets/baileys. Instálalo con: bun add @whiskeysockets/baileys qrcode');
+  console.error('[wa-daemon] Falta @whiskeysockets/baileys. Instálalo con: npm install @whiskeysockets/baileys qrcode');
   process.exit(1);
 }
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = baileys;
 let QRCode;
-try { QRCode = require('qrcode'); } catch { /* la consola imprime el QR crudo si falta */ }
+try { QRCode = requireFromApp('qrcode'); } catch { /* la consola imprime el QR crudo si falta */ }
 let pino;
 try { pino = require('pino'); } catch { /* baileys usa su logger por defecto */ }
 
@@ -123,11 +203,53 @@ async function start() {
   });
 }
 
-// HTTP local mínimo: estado y logout manual (solo loopback).
-const server = http.createServer((req, res) => {
+// HTTP local mínimo: estado, envío en cola y logout manual (solo loopback).
+function tokenOk(provided) {
+  if (!DAEMON_TOKEN) return true; // sin token definido, solo loopback protege
+  const a = Buffer.from(String(provided || ''));
+  const b = Buffer.from(DAEMON_TOKEN);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+function readJsonBody(req) {
+  return new Promise((resolve) => {
+    let raw = '';
+    req.on('data', (c) => { raw += c; });
+    req.on('end', () => { try { resolve(JSON.parse(raw || '{}')); } catch { resolve({}); } });
+    req.on('error', () => resolve({}));
+  });
+}
+
+const server = http.createServer(async (req, res) => {
   if (req.url === '/status') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ name: NAME, state: lastState, user: sock?.user?.name ?? '', phone: String(sock?.user?.id ?? '').split(':')[0] ?? '' }));
+    res.end(JSON.stringify({ name: NAME, state: lastState, user: sock?.user?.name ?? '', phone: String(sock?.user?.id ?? '').split(':')[0] ?? '', queue: sendQueue.length, dailyCount, dailyCap: DAILY_CAP, paused: panelPaused }));
+    return;
+  }
+  if (req.url === '/send' && req.method === 'POST') {
+    const body = await readJsonBody(req);
+    if (!tokenOk(req.headers['x-daemon-token'])) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: 'token del conector inválido (x-daemon-token)' }));
+      return;
+    }
+    const to = typeof body.to === 'string' ? body.to.trim() : '';
+    const text = typeof body.text === 'string' ? body.text.slice(0, 4096) : '';
+    const mediaUrl = typeof body.mediaUrl === 'string' && body.mediaUrl.trim() ? body.mediaUrl.trim() : '';
+    if (!to || (!text && !mediaUrl)) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: 'to y (text | mediaUrl) son obligatorios' }));
+      return;
+    }
+    if (dailyCapReached()) {
+      res.writeHead(429, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: `techo diario WHATSAPP (${DAILY_CAP} envíos) alcanzado — no se encola más hoy` }));
+      return;
+    }
+    const entry = { jobId: typeof body.jobId === 'string' ? body.jobId.slice(0, 160) : `wa-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, to, text, mediaUrl, enqueuedAt: Date.now() };
+    sendQueue.push(entry);
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true, queued: true, position: sendQueue.length, jobId: entry.jobId }));
     return;
   }
   if (req.url === '/logout' && req.method === 'POST') {
@@ -143,6 +265,35 @@ const server = http.createServer((req, res) => {
   }
   res.writeHead(404); res.end();
 });
+
+// ─── Despachador de la cola: ritmo humano + pausa global + entrega firmada ──
+setInterval(() => {
+  (async () => {
+    if (!sendQueue.length || lastState !== 'CONNECTED' || !sock) return;
+    await refreshPanelPaused();
+    if (panelPaused) return; // pausa global: la cola espera
+    if (dailyCapReached()) return; // techo diario propio
+    const gap = Math.floor(MIN_GAP_MS * (1 + Math.random() * 0.5)); // jitter humano ±50%
+    if (Date.now() - lastSendAt < gap) return;
+    const entry = sendQueue.shift();
+    lastSendAt = Date.now();
+    try {
+      const payload = entry.mediaUrl
+        ? { image: { url: entry.mediaUrl }, caption: entry.text || undefined }
+        : { text: entry.text };
+      const out = await sock.sendMessage(entry.to, payload);
+      dailyCount += 1;
+      const waMessageId = out?.key?.id ?? '';
+      if (!waMessageId) {
+        await reportDelivery(entry, 'FAILED', { failReason: 'WhatsApp respondió sin message_id: sin evidencia no hay éxito' });
+        return;
+      }
+      await reportDelivery(entry, 'DELIVERED', { waMessageId });
+    } catch (e) {
+      await reportDelivery(entry, 'FAILED', { failReason: String(e?.message ?? e).slice(0, 300) });
+    }
+  })().catch((e) => console.error('[wa-daemon] error en el despachador:', e?.message ?? e));
+}, 1000);
 
 server.listen(PORT, '127.0.0.1', () => {
   console.log(`[wa-daemon] ${NAME} arriba: estado en http://127.0.0.1:${PORT}/status · reportando a ${HARNESS_URL}`);
