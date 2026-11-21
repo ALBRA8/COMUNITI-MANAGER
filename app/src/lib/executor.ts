@@ -124,7 +124,7 @@ async function dispatchTool<T>(
     case 'postgale.publish':
       return restAdapter<T>(tool.envKeys, 'POSTGALE', contract, payload, ctx);
     case 'postiz.publish':
-      return restAdapter<T>(tool.envKeys, 'POSTIZ', contract, payload, ctx);
+      return postizAdapter<T>(contract, payload, ctx);
     case 'postlake.publish':
       return restAdapter<T>(tool.envKeys, 'POSTLAKE', contract, payload, ctx);
 
@@ -207,25 +207,18 @@ const API_KEYS: Record<string, string | undefined> = {
   KREA: process.env.KREA_API_KEY,
 };
 
-// Mapa contrato → método/ruta por proveedor (solo rutas documentadas)
+// Mapa contrato → método/ruta por proveedor (SOLO rutas verificadas contra la
+// documentación oficial de cada proveedor — Fase 2 punto 7, 2026-11-21).
+// Postgale y PostLake: SIN documentación oficial pública verificable → sus
+// rutas se RETIRARON y todo contrato queda CAPACITY_UNAVAILABLE con la razón
+// explícita (nunca se asume una ruta).
 const ROUTES: Record<string, Partial<Record<Contract, { method: string; path: string }>>> = {
-  POSTGALE: {
-    publish_post: { method: 'POST', path: '/api/v1/posts' },
-    schedule_post: { method: 'POST', path: '/api/v1/posts' },
-    list_accounts: { method: 'GET', path: '/api/v1/accounts' },
-    fetch_metrics: { method: 'GET', path: '/api/v1/analytics' },
-  },
-  POSTIZ: {
-    publish_post: { method: 'POST', path: '/api/v1/posts' },
-    schedule_post: { method: 'POST', path: '/api/v1/posts' },
-  },
-  POSTLAKE: {
-    publish_post: { method: 'POST', path: '/v1/posts' },
-    schedule_post: { method: 'POST', path: '/v1/posts' },
-  },
   SCRAPECREATORS: {
     research_topic: { method: 'GET', path: '/v1/instagram/profile' },
     analyze_competitor: { method: 'GET', path: '/v1/instagram/profile' },
+    // docs.scrapecreators.com/v2/instagram/post/comments (verificado 2026-11-21):
+    // GET con x-api-key, params url (obligatorio) e include_replies (opcional).
+    fetch_comments: { method: 'GET', path: '/v2/instagram/post/comments' },
   },
 };
 
@@ -248,7 +241,7 @@ async function restAdapter<T>(
   if (!route) {
     return {
       outcome: 'CAPACITY_UNAVAILABLE',
-      reason: `${provider} no documenta una ruta verificada para ${contract}`,
+      reason: `${provider} no documenta una ruta verificada para ${contract} (retirado hasta verificación documental — nunca se asume)`,
     } as ContractResult<T>;
   }
 
@@ -259,7 +252,11 @@ async function restAdapter<T>(
     const res = await fetch(url, {
       method: route.method,
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        // Auth por proveedor: ScrapeCreators usa x-api-key (docs oficiales);
+        // los proveedores tipo Bearer siguen con Authorization: Bearer.
+        ...(provider === 'SCRAPECREATORS'
+          ? { 'x-api-key': apiKey }
+          : { Authorization: `Bearer ${apiKey}` }),
         'Content-Type': 'application/json',
         ...(provider === 'POSTGALE' && route.method === 'POST'
           ? { 'x-request-id': ctx.idempotencyKey ?? crypto.randomUUID() }
@@ -587,5 +584,189 @@ async function whatsappAdapter<T>(
     return { outcome: 'ERROR', reason: `Conector WhatsApp inalcanzable (${waDaemonUrl()}): ${(e as Error).message}` } as ContractResult<T>;
   } finally {
     clearTimeout(timeout);
+  }
+}
+
+// ─── Postiz: vía API multirred (docs.postiz.com, verificado 2026-11-21) ──
+// Rutas oficiales: GET /public/v1/integrations · POST /public/v1/posts ·
+// POST /public/v1/upload-from-url · GET /public/v1/posts (verificación) ·
+// GET /public/v1/analytics/post/{id}. Auth: Authorization: <api-key> (SIN
+// Bearer). Self-host puede montar la API bajo /api/public → POSTIZ_API_PREFIX
+// solo ajusta ese prefijo (config del operador, nunca lo asume el código).
+// Redes con settings verificados en docs: instagram, facebook, x, linkedin.
+// Otras redes (tiktok/youtube/threads) exigen settings/media específicos que
+// no se asumen: CAPACITY_UNAVAILABLE con la razón explícita.
+
+type PostizIntegration = { id?: string; name?: string; provider?: string; identifier?: string };
+type PostizPostPayload = {
+  type: 'now' | 'schedule' | 'draft';
+  date?: string;
+  shortLink: boolean;
+  tags: unknown[];
+  posts: Array<{ integration: { id: string }; value: Array<{ content: string; image: string[] }>; settings: Record<string, unknown> }>;
+};
+
+const POSTIZ_SETTINGS_BY_NETWORK: Record<string, Record<string, unknown>> = {
+  instagram: { __type: 'instagram', post_type: 'post' },
+  facebook: { __type: 'facebook' },
+  x: { __type: 'x' },
+  linkedin: { __type: 'linkedin' },
+};
+
+function postizBase(): { base: string; prefix: string; key: string } | null {
+  const base = (process.env.POSTIZ_URL ?? '').replace(/\/$/, '');
+  const key = process.env.POSTIZ_API_KEY ?? '';
+  if (!base || !key) return null;
+  return { base, prefix: (process.env.POSTIZ_API_PREFIX || '/public').replace(/\/$/, ''), key };
+}
+
+async function postizAdapter<T>(
+  contract: Contract,
+  payload: Record<string, unknown>,
+  ctx: ExecuteContext
+): Promise<ContractResult<T>> {
+  const cfg = postizBase();
+  if (!cfg) {
+    return { outcome: 'CAPACITY_UNAVAILABLE', reason: 'Postiz: pendiente de credenciales (falta POSTIZ_URL y/o POSTIZ_API_KEY)' } as ContractResult<T>;
+  }
+  const { base, prefix, key } = cfg;
+  const api = `${base}${prefix}/v1`;
+
+  const call = async (path: string, init: { method: string; body?: unknown } = { method: 'GET' }) => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+    try {
+      const res = await fetch(`${api}${path}`, {
+        method: init.method,
+        headers: { Authorization: key, 'Content-Type': 'application/json' },
+        body: init.body ? JSON.stringify(init.body) : undefined,
+        signal: controller.signal,
+      });
+      const data = await res.json().catch(() => null);
+      return { status: res.status, data };
+    } finally {
+      clearTimeout(timeout);
+    }
+  };
+
+  switch (contract) {
+    case 'list_accounts':
+    case 'get_connection_status': {
+      const r = await call('/integrations');
+      if (r.status < 200 || r.status >= 300) {
+        return { outcome: 'ERROR', reason: `Postiz ${r.status}: ${JSON.stringify(r.data).slice(0, 200)}` } as ContractResult<T>;
+      }
+      return { outcome: 'OK', data: r.data, evidence: { source: 'postiz', payload: { integrations: Array.isArray(r.data) ? r.data.length : 0 } } } as ContractResult<T>;
+    }
+
+    case 'publish_post':
+    case 'schedule_post': {
+      const network = String(payload.network ?? '');
+      const settings = POSTIZ_SETTINGS_BY_NETWORK[network];
+      if (!settings) {
+        return { outcome: 'CAPACITY_UNAVAILABLE', reason: `Postiz: la red ${network} exige settings/media específicos que no están verificados en la documentación oficial — no se asumen` } as ContractResult<T>;
+      }
+      const text = String(payload.text ?? '').trim();
+      if (!text) return { outcome: 'ERROR', reason: 'Postiz: el contenido aprobado viene vacío' } as ContractResult<T>;
+
+      // Motor de 6 estados para redes Meta vía Postiz (IG/FB): la vía cambia,
+      // la obligación de cumplimiento no.
+      if (network === 'instagram' || network === 'facebook') {
+        const op = network === 'instagram' ? 'IG_POST' : 'FB_PAGE_POST';
+        const policy = await authorize({
+          operation: op,
+          approvedByHuman: true,
+          actor: `agent:${ctx.agent}`,
+          note: `publicación aprobada vía Postiz ${ctx.idempotencyKey ?? ''}`,
+        });
+        if (['BLOQUEADO', 'POLITICA_DESACTUALIZADA', 'REQUIERE_APROBACION'].includes(policy.verdict)) {
+          return {
+            outcome: 'CAPACITY_UNAVAILABLE',
+            reason: `Motor de cumplimiento: ${policy.verdict} — ${policy.reasons.join(' | ').slice(0, 300)}`,
+          } as ContractResult<T>;
+        }
+      }
+
+      // Integración de Postiz que corresponde a la cuenta de la marca: primero
+      // el id vinculado (providerAccountId), si no, emparejamiento por proveedor
+      // en la lista real de integraciones conectadas.
+      const account = await db.socialAccount.findFirst({ where: { brandId: ctx.brandId, network } });
+      const listRes = await call('/integrations');
+      const integrations: PostizIntegration[] = Array.isArray(listRes.data) ? listRes.data as PostizIntegration[] : [];
+      const linked = account?.providerAccountId?.trim();
+      const integration = (linked && integrations.find((i) => i.id === linked))
+        || integrations.find((i) => String(i.provider ?? '').toLowerCase() === network)
+        || integrations.find((i) => String(i.name ?? '').toLowerCase().includes(network));
+      if (!integration?.id) {
+        return { outcome: 'CAPACITY_UNAVAILABLE', reason: `Postiz: la cuenta ${network} de la marca no está conectada en la vía (no hay integración en GET /integrations ni providerAccountId vinculado)` } as ContractResult<T>;
+      }
+
+      // Media: subida real desde URL (POST /upload-from-url → {id}); si un
+      // adjunto no se puede preparar, el envío NO sale a medias.
+      const media = Array.isArray(payload.media) ? payload.media : [];
+      const imageIds: string[] = [];
+      for (const m of media) {
+        const url = String((m as Record<string, unknown>)?.url ?? m ?? '').trim();
+        if (!url) continue;
+        const up = await call('/upload-from-url', { method: 'POST', body: { url, adjust: false } });
+        const mediaId = (up.data as { id?: string } | null)?.id;
+        if (up.status < 200 || up.status >= 300 || !mediaId) {
+          return { outcome: 'ERROR', reason: `Postiz: no se pudo preparar la media ${url} (upload-from-url HTTP ${up.status}) — no se publica sin los adjuntos prometidos` } as ContractResult<T>;
+        }
+        imageIds.push(mediaId);
+      }
+
+      const type: 'now' | 'schedule' = contract === 'schedule_post' ? 'schedule' : 'now';
+      const rawDate = payload.date ?? payload.scheduledAt;
+      if (type === 'schedule' && !rawDate) {
+        return { outcome: 'ERROR', reason: 'Postiz: schedule_post exige date/scheduledAt' } as ContractResult<T>;
+      }
+      const body: PostizPostPayload = {
+        type,
+        ...(type === 'schedule' ? { date: new Date(String(rawDate)).toISOString() } : {}),
+        shortLink: false,
+        tags: [],
+        posts: [{ integration: { id: integration.id }, value: [{ content: text, image: imageIds }], settings }],
+      };
+      const r = await call('/posts', { method: 'POST', body });
+      if (r.status < 200 || r.status >= 300) {
+        return { outcome: 'ERROR', reason: `Postiz ${r.status}: ${JSON.stringify(r.data).slice(0, 250)}` } as ContractResult<T>;
+      }
+      const arr = Array.isArray(r.data) ? (r.data as Array<{ postId?: string }>) : [];
+      const postId = arr[0]?.postId;
+      if (!postId) {
+        return { outcome: 'ERROR', reason: 'Postiz respondió sin postId: sin evidencia no hay éxito' } as ContractResult<T>;
+      }
+      return {
+        outcome: 'OK',
+        data: { id: postId, network, provider: 'postiz' },
+        evidence: { source: 'postiz', payload: { postId, integration: integration.id, type, media: imageIds.length } },
+      } as ContractResult<T>;
+    }
+
+    case 'verify_publication': {
+      const externalId = String(payload.externalId ?? '');
+      if (!externalId) return { outcome: 'ERROR', reason: 'Postiz: verify sin externalId' } as ContractResult<T>;
+      const r = await call('/posts');
+      const list = Array.isArray(r.data) ? (r.data as Array<{ postId?: string }>) : [];
+      const found = list.find((p) => p.postId === externalId);
+      if (!found) {
+        return { outcome: 'ERROR', reason: `Postiz: ${externalId} no aparece en la lista de posts de la vía (no verificado, sin inventar)` } as ContractResult<T>;
+      }
+      return { outcome: 'OK', data: found, evidence: { source: 'postiz', payload: { postId: externalId } } } as ContractResult<T>;
+    }
+
+    case 'fetch_metrics': {
+      const externalId = String(payload.externalId ?? '');
+      if (!externalId) return { outcome: 'ERROR', reason: 'Postiz: métricas sin externalId' } as ContractResult<T>;
+      const r = await call(`/analytics/post/${encodeURIComponent(externalId)}`);
+      if (r.status < 200 || r.status >= 300) {
+        return { outcome: 'ERROR', reason: `Postiz analytics ${r.status}: ${JSON.stringify(r.data).slice(0, 200)}` } as ContractResult<T>;
+      }
+      return { outcome: 'OK', data: r.data, evidence: { source: 'postiz', payload: { postId: externalId } } } as ContractResult<T>;
+    }
+
+    default:
+      return { outcome: 'CAPACITY_UNAVAILABLE', reason: `postiz.publish no implementa ${contract}` } as ContractResult<T>;
   }
 }
