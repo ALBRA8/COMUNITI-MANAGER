@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Instalar dependencias y preparar base de datos (BD virgen)
+        run: |
+          cd app
+          npm ci
+          npx prisma generate
+          npx prisma db push
+
+      - name: Tipos, lint y build standalone
+        run: |
+          cd app
+          npx tsc --noEmit
+          npm run lint
+          npm run build
+
+      - name: Contratos honestos (todo contrato declarado tiene ejecutor)
+        run: node scripts/verify-contratos.cjs
+
+      - name: Batería estándar (8 suites contra BD virgen + cola limpia)
+        run: |
+          bash scripts/run-with-server.sh \
+            "node scripts/test-p2-approval.cjs" \
+            "node scripts/e2e-fb-groups.cjs" \
+            "node scripts/test-joins-fb.cjs" \
+            "node scripts/test-media-fb.cjs" \
+            "node scripts/test-mejoras-fb.cjs" \
+            "node scripts/test-p8-p12.cjs" \
+            "node scripts/test-meta-policy.cjs" \
+            "node scripts/test-integrations.cjs"
+          node scripts/cola-check.cjs
+
+      # Los canales reales se prueban contra MOCKS de sus redes (Bot API,
+      # conector WhatsApp, API pública de Postiz) con las rutas OFICIALES
+      # verificadas en la documentación de cada proveedor. En producción las
+      # mismas rutas apuntan a las redes reales por variables de entorno.
+      - name: Canales reales (Telegram / WhatsApp / Postiz contra mocks)
+        run: |
+          TELEGRAM_BOT_TOKEN=test-token-tg \
+          TELEGRAM_API_BASE=http://127.0.0.1:4010 \
+          TELEGRAM_GROUP_PER_MINUTE=2 \
+          POSTIZ_URL=http://127.0.0.1:4030 \
+          POSTIZ_API_KEY=test-pz-key \
+          HARNESS_WEBHOOK_SECRET=wa-test-secret \
+          WHATSAPP_DAEMON_URL=http://127.0.0.1:4020 \
+          WHATSAPP_DAEMON_TOKEN=test-wa-token \
+          WHATSAPP_DAILY_CAP=3 \
+          bash scripts/run-with-server.sh \
+            "node scripts/test-telegram.cjs" \
+            "node scripts/test-whatsapp-send.cjs" \
+            "node scripts/test-postiz-contract.cjs"
+
+      - name: Lib pura de mejores horas (Node 24, type stripping)
+        run: node scripts/test-besttime.ts
