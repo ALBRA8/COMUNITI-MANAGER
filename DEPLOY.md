@@ -208,3 +208,40 @@ El bucle interno corre cada 60 s. Alternativa: `POST /api/scheduler
 - [ ] Centro de Cumplimiento Meta: fuentes verificadas, cambios analizados.
 - [ ] Backup de `app/prisma/db/harness.db` programado.
 - [ ] Riesgos de baneo leídos y aceptados (§8) y token de GitHub revocado (§10).
+- [ ] Prueba de humo guiada (§13): al menos un envío real por canal con su evidencia guardada.
+
+## 13. Prueba de humo real guiada (scripts/smoke-real.cjs)
+
+Verifica que el agente PUBLICA de verdad con tus credenciales, canal por canal,
+sin simular nada. El script crea borradores de prueba, los deja en la cola de
+aprobaciones y **espera a que TÚ los apruebes en el panel** (HITL real: nunca
+aprueba por sí mismo). Al terminar guarda el enlace o message_id de cada envío
+en `smoke-real-evidence.json` (raíz del repo).
+
+```bash
+# 1. Panel arriba y con credenciales (secciones 1-6 de esta guía).
+# 2. Define los DESTINOS de la prueba y ejecuta desde la raíz del repo:
+TEST_BASE=http://localhost:3000 \
+PANEL_TOKEN=<tu-token> \
+SMOKE_TELEGRAM_CHAT=@mi_canal \
+SMOKE_WHATSAPP_TO=573001112233 \
+SMOKE_POSTIZ_NETWORK=instagram \
+node scripts/smoke-real.cjs
+# 3. Abre el panel → Aprobaciones → aprueba las solicitudes "Prueba de humo".
+#    El script detecta la aprobación, publica y reporta la evidencia:
+#      · telegram → enlace t.me/<canal>/<message_id>
+#      · whatsapp → waMessageId del reporte firmado de entrega
+#      · postiz   → postId devuelto por POST /public/v1/posts
+```
+
+- Sin credenciales el script NO falla: cada canal queda en `AWAITING_CREDENTIALS`
+  (estado honesto del panel) o `AWAITING_TARGET` (falta `SMOKE_TELEGRAM_CHAT` /
+  `SMOKE_WHATSAPP_TO`) con la variable exacta que falta, y termina exit 0.
+- Estados posibles por canal: `AWAITING_CREDENTIALS`, `AWAITING_TARGET`,
+  `REJECTED`, `WAITING_APPROVAL_TIMEOUT`, `AWAITING_CONNECTOR`, `FAILED`,
+  `PUBLISHING` (WhatsApp: entrega asincrónica esperando el reporte firmado) y
+  `PUBLISHED` (con evidencia).
+- Opciones: `--minutes N` (espera de aprobación, default 10), `--strict`
+  (exit 1 si algún canal no publica), `--evidence RUTA`.
+- La marca `SMOKE-…` y sus borradores quedan como registros honestos en la BD:
+  bórralos desde el panel cuando quieras.
