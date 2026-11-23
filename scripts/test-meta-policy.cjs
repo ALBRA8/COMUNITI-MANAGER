@@ -43,16 +43,24 @@ async function j(method, path, body, headers = {}) {
   // ── Bootstrap honesto para BD virgen (repo entregado) ──
   // El motor exige frescura REAL de las fuentes del producto FACEBOOK_GROUPS
   // para dar veredictos no bloqueantes. En una BD recién creada las fuentes
-  // sembradas nunca se consultaron → POLITICA_DESACTUALIZADA. Se consultan
+  // sembradas nunca se consultaron → POLITICA_DESACTUALIZADA. El catálogo se
+  // siembra con la ruta REAL del panel (GET /api/meta-policy llama a
+  // ensurePolicySourcesSeeded) y después se verifican las fuentes del producto
   // contra la red REAL (sin fingir frescura): si una fuente no responde queda
-  // como INACCESSIBLE y el test fallará honesto en ese entorno.
+  // como INACCESSIBLE y el test fallará honesto en ese entorno (con 1 reintento
+  // por fuente para tolerar una intermitencia puntual de red).
+  await j('GET', '/api/meta-policy');
   const fbSources = await prisma.metaPolicySource.findMany({
     where: { active: true, OR: [{ product: 'FACEBOOK_GROUPS' }, { alsoCovers: { contains: 'FACEBOOK_GROUPS' } }] },
   });
   if (fbSources.length) {
     console.log(`[bootstrap] verificando ${fbSources.length} fuente(s) reales del producto FACEBOOK_GROUPS…`);
     for (const s of fbSources) {
-      const r = await j('POST', '/api/meta-policy', { action: 'check-source', sourceId: s.id });
+      let r = await j('POST', '/api/meta-policy', { action: 'check-source', sourceId: s.id });
+      if (r.data?.result?.status !== 'OK' && r.data?.result?.status !== 'CHANGED') {
+        await new Promise((res) => setTimeout(res, 2000));
+        r = await j('POST', '/api/meta-policy', { action: 'check-source', sourceId: s.id });
+      }
       console.log(`  [bootstrap] ${s.key}: ${r.data?.result?.status ?? 'SIN_RESPUESTA'}${r.data?.result?.httpStatus ? ` (HTTP ${r.data.result.httpStatus})` : ''}`);
     }
   }
@@ -228,12 +236,18 @@ async function j(method, path, body, headers = {}) {
   check('la parada de emergencia queda auditada como acción humana', audit14.length === 1 && audit14[0].actor === 'human');
 
   // ── Flujo completo honesto: borrador → motor OK → aprobar → cola → claim ──
+  // Con guard: si el motor bloqueó la creación (fallos previos honestos), no se
+  // pisa con un PrismaClientValidationError que tape la causa real.
   console.log('Flujo completo: borrador → aprobación con motor activo → cola');
+  if (!camp8Id) {
+    console.log('  (flujo completo omitido: la campaña MP-TEST no se creó — ver fallos anteriores)');
+  } else {
   const approve10 = await j('PATCH', '/api/fb-campaigns', { campaignId: camp8Id, action: 'approve' });
   check('aprobación HITL con motor operativo → jobs en cola', approve10.status === 200 && approve10.data.approved >= 1, JSON.stringify(approve10.data).slice(0, 160));
   await prisma.fbCampaign.update({ where: { id: camp8Id }, data: { windowStart: 0, windowEnd: 24, nightOverride: true } });
   const claimOk = await signedClaim({ workerId, capacity: 5 });
   check('worker reclama el job aprobado dentro de ventana (entre la cola existente)', (claimOk.data.jobs ?? []).some((jj) => jj.campaignId === camp8Id), JSON.stringify(claimOk.data).slice(0, 160));
+  }
 
   // ── Informes computados (FASE 7) ──
   console.log('Informes diario/semanal/mensual');
