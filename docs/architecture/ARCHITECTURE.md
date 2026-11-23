@@ -4,7 +4,7 @@
 
 ## 1. Idea central
 
-**El agente no se reconstruye: se viste.** AGENTE-GENERAL (ALBRA Seed, MIT) es
+**El agente no se reconstruye: se viste.** ALBRA Seed (MIT) es
 el runtime universal sin conocimiento de dominio. Social Autopilot AI es el
 **arnés** que le añade el dominio de community management y añade un panel de
 control en español, al tiempo que coordina a los agentes especializados que ya
@@ -37,7 +37,7 @@ existen en el ecosistema ALBRA8.
 └──────────────┴───────────────────────┴─────────────────────────────┘
           │
           ▼  (cuando la semilla está desplegada)
-   AGENTE-GENERAL API: /api/v1/health · /api/v1/readiness · /api/v1/execution
+   API de la semilla (ALBRA Seed): /api/v1/health · /api/v1/readiness · /api/v1/execution
    Capa de especialización Python: especializacion-albra/ (contrato Seed)
 ```
 

@@ -10,7 +10,7 @@
 4. **Idempotencia en toda acción externa**; resultado incierto → reconciliación, nunca reintento ciego.
 5. **Cambiar de proveedor no toca el orquestador**: solo cambia el adaptador.
 
-## 2. AGENTE-GENERAL (la semilla — el agente vestido por el arnés)
+## 2. ALBRA Seed (la semilla — capa opcional del ecosistema)
 
 - **Rol**: runtime del agente. El arnés no reimplementa su código (contrato de especialización).
 - **Estado**: no desplegada por defecto. El arnés funciona con su motor propio y muestra la conexión como estado.

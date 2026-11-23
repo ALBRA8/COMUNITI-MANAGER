@@ -44,7 +44,7 @@ manual, sin duplicación de capacidades cuando el operador las conecta):
 | Generación de imágenes/texto/voz/ebooks | AGENTE-KREA | REST `/api/generate/*` |
 | Vídeo largo→clips, TTS, YouTube | YOUTUBE-AUTOMATION | MCP + A2A |
 | Investigación de nichos YouTube | NEX-SCOPE | MCP |
-| Semilla universal (opcional) | AGENTE-GENERAL (ALBRA Seed) | REST `/api/v1/health` |
+| Semilla universal (opcional) | ALBRA Seed (la semilla) | REST `/api/v1/health` |
 
 Lo que el agente SÍ construye de su propio capitale (nadie más lo cubre para su
 misión):

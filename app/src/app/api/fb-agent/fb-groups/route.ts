@@ -6,8 +6,8 @@ import { policyState } from '@/lib/meta-policy';
 export const dynamic = 'force-dynamic';
 
 // Puente agéntico v1 (P11, destripe Metricool §0.2 — patrón MCP): lectura
-// honesta del estado del módulo FB-GROUPS para que el agente (AGENTE-GENERAL)
-// lo goberne con datos. Solo lectura: escribir campañas sigue siendo
+// honesta del estado del módulo FB-GROUPS para que la semilla u otro
+// agente del ecosistema lo goberne con datos. Solo lectura: escribir campañas sigue siendo
 // POST /api/fb-campaigns y pasa por el gauge de riesgo + HITL del operador.
 // La verdad de cada entrega vive en la auditoría append-only.
 

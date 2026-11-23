@@ -158,7 +158,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({
           outcome: 'OK',
           ...(await probe(`${process.env.ALBRA_SEED_URL}/api/v1/health`, { Authorization: `Bearer ${process.env.ALBRA_SEED_TOKEN}` })),
-          reason: 'Semilla AGENTE-GENERAL alcanzable.',
+          reason: 'Semilla ALBRA Seed alcanzable.',
         });
       case 'postgale.publish':
         return NextResponse.json({

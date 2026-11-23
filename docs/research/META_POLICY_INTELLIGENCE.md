@@ -64,7 +64,7 @@ Cada decisión se audita (`META_POLICY_CHECK`); el panel tiene simulador
 | `POST /api/fb-campaigns` | authorize FB_GROUP_POST antes de crear: BLOQUEADO/DESACTUALIZADA → 403; REQUIERE_APROBACION/NO_VERIFICADO → nace borrador aunque el script pida aprobar |
 | `PATCH /api/fb-campaigns` (approve) | authorize FB_CAMPAIGN_APPROVAL: la aprobación humana satisface el HITL pero no anula bloqueos activos → 403 si BLOQUEADO/DESACTUALIZADA |
 | `claimJobsForWorker` / `claimJoinTaskForWorker` | policyHold al inicio: POLICY_HOLD sin entregas (última línea de defensa pre-vuelo) |
-| `GET /api/fb-agent/fb-groups` | expone `policy` (overall, razones, killswitch, frescura) para que el AGENTE-GENERAL la consulte; solo lectura |
+| `GET /api/fb-agent/fb-groups` | expone `policy` (overall, razones, killswitch, frescura) para que la semilla u otros agentes la consulten; solo lectura |
 | `startSchedulerLoop` | policyWatchTick con throttle de 30 min: consulta fuentes vencidas; el fallo del vigilante va a ErrorLog |
 
 ## 6. Panel (Gobierno → Centro de Cumplimiento Meta)

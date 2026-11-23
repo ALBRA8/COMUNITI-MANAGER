@@ -22,7 +22,7 @@ cp .env.example .env # y edita los valores
 
 ```ini
 FB_WORKER_PORT=8765
-HARNESS_URL=http://IP-DEL-CHALECO:3000
+HARNESS_URL=http://IP-DEL-PANEL:3000
 WORKER_ID=paste_aqui_el_id_del_worker
 WORKER_SECRET=paste_aqui_el_secreto_mostrado_una_vez
 FB_PROFILE_DIR=./chrome-profile

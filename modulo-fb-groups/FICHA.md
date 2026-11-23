@@ -222,7 +222,7 @@ exacto; un POSTED sin URL se degrada a FAILED por honestidad).
   fallos firmados, sugerencias solo con muestra global ≥10 y celda ≥3 con tasa
   ≥50%, aviso honesto de muestra pequeña; los fallos se ubican con updatedAt,
   aproximación declarada); **P11** puente agéntico de lectura v1
-  (GET /api/fb-agent/fb-groups: estado honesto del módulo para AGENTE-GENERAL sin
+  (GET /api/fb-agent/fb-groups: estado honesto del módulo para la semilla del ecosistema sin
   exponer secretos ni baseUrl; crear campañas sigue pasando por POST + gauge + HITL);
   **P12** biblioteca de media por marca (modelo FbMedia, API /api/fb-media con la
   misma validación que los adjuntos, chips clicables en el formulario de campañas).

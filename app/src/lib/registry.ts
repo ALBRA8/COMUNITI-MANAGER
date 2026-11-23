@@ -136,7 +136,7 @@ export const TOOLS: ToolDefinition[] = [
   },
   {
     key: 'albra.seed',
-    provider: 'AGENTE-GENERAL (ALBRA Seed)',
+    provider: 'ALBRA Seed (semilla del ecosistema, opcional)',
     category: 'ECOSYSTEM',
     description: 'Semilla universal: runtime con firewall, política, aprobaciones HITL, memoria MemoryDV y auditoría. Se opera por REST cuando está desplegada.',
     contracts: ['get_connection_status'],

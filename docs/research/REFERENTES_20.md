@@ -165,7 +165,7 @@
 
 - **Licencia verificada**: MIT.
 - **Capacidades verificadas**: orquestación con estado, persistencia, ejecución por etapas, interrupciones/HITL, recuperación.
-- **Decisión: DESCARTAR COMO RUNTIME — con justificación**: la semilla AGENTE-GENERAL ya implementa exactamente ese conjunto (runtime con estado, ApprovalEngine HITL, workflows con WorkflowGraph, scheduler, resilience, auditoría a prueba de manipulación) y es la base declarada del ecosistema del usuario. Introducir LangGraph fragmentaría la arquitectura y duplicaría el runtime. Referencia técnica para patrones de checkpoint.
+- **Decisión: DESCARTAR COMO RUNTIME — con justificación**: la semilla ALBRA Seed ya implementa exactamente ese conjunto (runtime con estado, ApprovalEngine HITL, workflows con WorkflowGraph, scheduler, resilience, auditoría a prueba de manipulación) y es la base declarada del ecosistema del usuario. Introducir LangGraph fragmentaría la arquitectura y duplicaría el runtime. Referencia técnica para patrones de checkpoint.
 
 ## 20. SOCIAL MEDIA SKILLS — https://github.com/social-media-skills/skills
 
@@ -181,12 +181,12 @@ Repos clonados y verificados en `investigacion/albra8/` (ninguno modificado):
 
 | Repo | Licencia | Qué hace (verificado en código) | Funciones ya cubiertas (el arnés NO las repite) | Punto de integración |
 |---|---|---|---|---|
-| **AGENTE-GENERAL** (Seed) | MIT | Runtime universal: firewall (default-deny), policy engine, autonomy levels, ApprovalEngine HITL (SQLite durable opcional), MemoryDV con procedencia/evidencia, jobs/scheduler/workflows, auditoría tamper-evident, doctor con estados honestos IMPLEMENTED/MOCK/PLACEHOLDER, A2A, MCP, REST `/api/v1/*` | Runtime, seguridad, memoria, ejecución — el arnés NO reimplementa runtime | REST `/api/v1/health`, `/api/v1/readiness`, `/api/v1/execution`; especialización vía `src/albra_specialization/` |
+| **ALBRA Seed** (la semilla) | MIT | Runtime universal: firewall (default-deny), policy engine, autonomy levels, ApprovalEngine HITL (SQLite durable opcional), MemoryDV con procedencia/evidencia, jobs/scheduler/workflows, auditoría tamper-evident, doctor con estados honestos IMPLEMENTED/MOCK/PLACEHOLDER, A2A, MCP, REST `/api/v1/*` | Runtime, seguridad, memoria, ejecución — el arnés NO reimplementa runtime | REST `/api/v1/health`, `/api/v1/readiness`, `/api/v1/execution`; especialización vía `src/albra_specialization/` |
 | AGENTE-LEADS | (privado) | Prospección B2B (pipeline 10 etapas, scoring 0-100, dedup multi-señal, verificación email), outreach SendGrid/WhatsApp Cloud en DRY RUN por defecto, webhooks `crm_albra_hooks` | Prospección, verificación, outreach 1:1 | Webhooks `lead.*`; REST `/api/prospects` |
 | AGENTE-CHISMOSO | (privado) | Escucha social: 12 tipos de señales, clustering, tendencias, oportunidades con scoreBreakdown auditable; **Google Trends registrado pero UNAVAILABLE (no simula)**; mesh con outbox a LEADS/YT/NEX-SCOPE; MCP | Escucha social, tendencias, alertas | Mesh `/api/mesh/events`; exportes MD/JSON |
 | AGENTE-KREA | (privado) | Fábrica de productos digitales: generación texto/imagen/voz/subtítulos/ebooks-PDF, QA 6 capas, créditos, auth PBKDF2, protocolo ADN | Generación de assets creativos | REST `/api/generate/*` |
 | WHATSPOWER-ULTRA | (privado) | Difusión masiva WhatsApp: spintax determinista, 5 capas anti-ban (throttle jitter 15-35s, cooldown, horario, fatiga, locks), supresión, link-tracking, ingesta webhooks FB/TikTok/Typeform | Campañas masivas, anti-ban | REST :3004 `/api/campaigns` |
-| CRM-ALBRA | (privado) | CRM multi-tenant "CHALECO": inbox WhatsApp (Baileys :3002)/Instagram/Telegram, auto-respuesta IA con handoff y kill-switch, Kanban ventas, automations durables, MemoryDV + embeddings; **agente propietario eliminado a propósito: diseñado para host externo** con `/api/crm/actions` (zod+RBAC), MCP 16 tools, API keys `albra_` | Mensajería entrante, conversación, CRM, ciclo de vida | **El arnés es el host**: `/api/crm/actions`, `/api/mcp`, `/api/memory` |
+| CRM-ALBRA | (privado) | CRM multi-tenant: inbox WhatsApp (Baileys :3002)/Instagram/Telegram, auto-respuesta IA con handoff y kill-switch, Kanban ventas, automations durables, MemoryDV + embeddings; **agente propietario eliminado a propósito: diseñado para host externo** con `/api/crm/actions` (zod+RBAC), MCP 16 tools, API keys `albra_` | Mensajería entrante, conversación, CRM, ciclo de vida | **El arnés es el host**: `/api/crm/actions`, `/api/mcp`, `/api/memory` |
 | PANEL-DE-CONTROL | (privado) | Control plane HITL: EEC STATE, pipeline VALIDATION→AUTHORIZATION→POLICY→DISPATCH, bus de eventos con correlation_id, cola de aprobaciones; solo adapter local-sim (sin conectores reales) | Contratos de gobernanza (reutilizables como patrón) | Patrón de contratos y aprobaciones |
 | YOUTUBE-AUTOMATION | (privado) | Fábrica de vídeo local: guion Gemini (4 modos incl. URL viral), imágenes, TTS dual, render ffmpeg, subtítulos ASS/SRT, avatares, modo fábrica cron, autopublish YouTube OAuth real idempotente, QA forense, **MCP 25 tools + A2A `/api/agent/execute`**; HANDS documentado NOT CONNECTED | Producción vídeo, publicación YouTube | MCP; A2A con `creative_spec` |
 | NEX-SCOPE | (privado) | Niche finder YouTube: keywords, tendencias, brechas, plan 30 vídeos, monetización RPM/CPM, competidores, ad-spy, thumbnail analyzer, MCP 12 tools; scheduler lee de catálogo estático (debilidad documentada) | Investigación nichos YouTube | MCP; REST `/api/content-plan` |
@@ -205,7 +205,7 @@ Repos clonados y verificados en `investigacion/albra8/` (ninguno modificado):
 
 | Función (contrato) | Proveedor elegido | Alternativa | Descartados |
 |---|---|---|---|
-| Runtime de agentes | AGENTE-GENERAL (Seed) | — | LangGraph, n8n |
+| Runtime de agentes | ALBRA Seed (la semilla) | — | LangGraph, n8n |
 | Escucha social | AGENTE-CHISMOSO | ScrapeCreators (evidencia puntual) | Brandwatch |
 | Investigación social | ScrapeCreators | CHISMOSO | — |
 | Investigación nichos YouTube | NEX-SCOPE | — | — |

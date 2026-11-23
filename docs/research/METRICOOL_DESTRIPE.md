@@ -30,9 +30,9 @@ de IA (Claude Code/Desktop, Cursor, ChatGPT, n8n, Make, Gemini CLI): 20+
 acciones en lenguaje natural — programar, leer analíticas, mejores momentos,
 competidores, campañas de ads. Autenticación OAuth o user token.
 Validación de dirección: el ecosistema ALBRA8 es agéntico por diseño
-(AGENTE-GENERAL); el patrón "la herramienta se gobierna desde el agente" es
+(ALBRA Seed); el patrón "la herramienta se gobierna desde el agente" es
 exactamente nuestra arquitectura de skills + HITL. Idea extraíble: **nuestro
-panel/módulo podría exponerse como MCP para que AGENTE-GENERAL lo opere.**
+panel/módulo podría exponerse como MCP para que la semilla (ALBRA Seed) lo opere.**
 
 **0.3 Metricool se vende como "marketing workspace", no como scheduler**
 (reseña hands-on webtribunal.net, 05/10/2026): planner + analíticas + inbox +
@@ -86,7 +86,7 @@ ventaja que hay que conservar y comunicar.
 | Biblioteca multimedia | Guardar y reorganizar assets por marca | SÍ (P2, menor) | P1 adjuntos acepta URL/ruta local; una biblioteca por marca (tabla FbMedia) daría rotación más rica. Esfuerzo bajo, valor medio |
 | Hashtag tracker | Seguimiento de hashtags (add-on pago) | NO | Métrica de alcance no disponible sin API |
 | Asistente IA (capciones, ideas, hashtags) | 5 créditos/marca/mes en free; reescrituras rápidas (review: "fast, still needed editing") | SÍ (refinar L2) | Nuestro L2 con Brand (identity/tone/vocabulary/forbiddenWords) ya es más profundo que su asistente genérico. Idea a incorporar: sugerencia de hashtags desde vocabulary de la marca |
-| MCP + API + Zapier/Make | Gobernar la herramienta desde agentes | **SÍ (P11)** | El patrón clave del destripe: exponer fb-groups al chaleco vía MCP/skill. Ya tenemos skill 'publicar-en-grupos-fb'; un MCP propio es la generalización |
+| MCP + API + Zapier/Make | Gobernar la herramienta desde agentes | **SÍ (P11)** | El patrón clave del destripe: exponer fb-groups al agente vía MCP/skill. Ya tenemos skill 'publicar-en-grupos-fb'; un MCP propio es la generalización |
 | Importación Google Drive / editor de vídeo / Canva | Reducción de fricción de medios | NO (ahora) | Nice-to-have; P2 biblioteca ya cubre lo esencial |
 
 ## 4. Patrones extraíbles (extracto sala limpia, numerado)
@@ -119,17 +119,17 @@ ventaja que hay que conservar y comunicar.
 
 Sin cambios desde FB_GROUPS_REFERENTES §4: ningún repo ALBRA8 hace
 analytics/calendario/informes de redes. Lo más cercano: PANEL-DE-CONTROL
-(panel general del chaleco, donde vive nuestra UI de fb-groups) y
+(panel general del agente, donde vive nuestra UI de fb-groups) y
 AGENTE-CHISMOSO (triage de comentarios en WhatsApp — el "Lead Radar" por
 mensajería ya tiene dueño). Conclusión: el backlog del §6 no duplica nada del
-ecosistema. Patrones reutilizables como CONCEPTO: Brand del chaleco para
-biblioteca/informes, skills del AGENTE-GENERAL para el futuro MCP.
+ecosistema. Patrones reutilizables como CONCEPTO: Brand del agente para
+biblioteca/informes, skills de la semilla para el futuro MCP.
 
 ## 6. Qué NO hacemos y por qué (decisión sala limpia)
 
 1. **No integramos Metricool como dependencia** — SaaS cerrado, por-marca se
    dispara con clientes, y su fuerza (Páginas, Ads, Inbox) la cubre Postgale
-   en el chaleco. Además: no puede entrar a grupos, que es nuestro hueco.
+   en el panel. Además: no puede entrar a grupos, que es nuestro hueco.
 2. **No competimos contra Metricool en todo** — nuestro alcance sigue siendo
    el pantalón de grupos: publicar honesto, anti-ban, HITL. Las analíticas de
    terceros y ads quedan fuera deliberadamente.
@@ -146,7 +146,7 @@ biblioteca/informes, skills del AGENTE-GENERAL para el futuro MCP.
 | P8 | **Calendario editorial** de jobs/campañas (semana/mes, chips por estado, click→detalle) | Alto | Medio | `fb-groups.tsx` + GET fb-jobs con rango de fechas (API ya expone jobs) |
 | P9 | **Informe de campaña** (HTML imprimible→PDF): resumen honesto por grupo (POSTED/fallo/postUrl/variante/worker) + KPIs de la franja | Alto | Medio | Nuevo `app/src/app/reports/[campaignId]` leyendo auditoría + jobs; nada de worker |
 | P10 | **"Mejores horas" propias**: heatmap hora×día con éxito/fallo desde FbJob.postedAt + warmup; sugerencia al elegir windowStart | Medio | Medio | `fb-groups.tsx` + lib nueva `fb-besttime.ts` (pura, testeable) |
-| P11 | **MCP/skill de fb-groups para AGENTE-GENERAL**: consultar estado de workers/campañas y crear campañas en borrador desde el agente (siempre HITL al aprobar) | Alto (agéntico) | Medio-Alto | skills.ts + nueva ruta API segura + doc de skill |
+| P11 | **MCP/skill de fb-groups para la semilla (ALBRA Seed)**: consultar estado de workers/campañas y crear campañas en borrador desde el agente (siempre HITL al aprobar) | Alto (agéntico) | Medio-Alto | skills.ts + nueva ruta API segura + doc de skill |
 | P12 | **Biblioteca media por marca** (tabla FbMedia + selector en CampaignForm; alimentaría mediaMode=rotate) | Medio | Bajo-Medio | schema + api + form |
 | P2 | Estado explícito APPROVED pre-vuelo (aprobación formal de la variante antes de la ventana) | Medio | Bajo | FbJob.status + UI |
 | — | Preview por red | Bajo (solo 1 red) | — | Descartado: solo grupos ⇒ preview simple ya cubierto |

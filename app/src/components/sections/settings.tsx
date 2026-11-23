@@ -60,7 +60,7 @@ const GROUPS: { title: string; hint: string; keys: string[] }[] = [
   },
   {
     title: 'Ecosistema (mundo aparte: otros agentes)',
-    hint: 'Servicios de OTROS agentes — CRM, Chismoso, Leads, KREA, YT-Automation, NEX-SCOPE, WhatsPower y la semilla AGENTE-GENERAL. Este agente es independiente: los consume solo si los activas, vía malla firmada; nada de esto hace falta para publicar.',
+    hint: 'Servicios de OTROS agentes — CRM, Chismoso, Leads, KREA, YT-Automation, NEX-SCOPE, WhatsPower y la semilla ALBRA Seed. Este agente es independiente: los consume solo si los activas, vía malla firmada; nada de esto hace falta para publicar.',
     keys: ['albra.seed', 'whatspower.broadcast', 'crm.conversation', 'chismoso.listening', 'krea.creativity', 'ytauto.video', 'nexscope.research'],
   },
 ];

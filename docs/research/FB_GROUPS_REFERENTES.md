@@ -13,7 +13,7 @@ Verificado en el changelog oficial v19.0 (developers.facebook.com):
 - API de Grupos completa: eliminada el **22/04/2024**, incluida la posibilidad
   de instalar apps en grupos por parte de administradores.
 - No existe alternativa oficial documentada para grupos. Solo Páginas
-  (publicación en Páginas ya cubierta por Postgale en el chaleco).
+  (publicación en Páginas ya cubierta por Postgale en el panel).
 
 Consecuencia: **la única vía viable para grupos es automatización de navegador
 con la sesión propia del usuario**. Es lo que hacen los 10 referentes SaaS
@@ -72,13 +72,13 @@ cercano: YOUTUBE-AUTOMATION hace YouTube; CRM-ALBRA/WHATSPOWER/ULTRA hacen
 mensajería WhatsApp). **El hueco es real.** Patrones reutilizables como
 CONCEPTO (no como código): capas anti-ban de WHATSPOWER-ULTRA (jitter,
 cooldown, horario, fatiga, locks), HMAC de webhooks, idempotencia y leases
-anti-doble-disparo del chaleco, auditoría append-only.
+anti-doble-disparo del panel, auditoría append-only.
 
 ## 5. Decisión de proveedor para grupos
 
 No se integra ningún SaaS del informe (son cerrados, de pago y frágiles a la
 detección de Meta). Se construye módulo propio con implementación original
 (sala limpia) que replica el patrón común de la industria. Postgale sigue
-siendo el proveedor de publicación para Páginas/redes oficiales del chaleco;
+siendo el proveedor de publicación para Páginas/redes oficiales del panel;
 el módulo FB-GROUPS cubre exclusivamente el hueco de grupos (+ perfil personal
 + publicación como Página en grupos).

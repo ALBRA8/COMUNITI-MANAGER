@@ -64,7 +64,7 @@ async function j(method, path, body) {
   check('FB-GROUPS sin workers reporta AWAITING_CREDENTIALS (no se finge conexión)',
     byKey.get('fbgroups.worker')?.status === 'AWAITING_CREDENTIALS' || byKey.get('fbgroups.worker')?.status === 'CONNECTED',
     `status=${byKey.get('fbgroups.worker')?.status}`);
-  check('semilla AGENTE-GENERAL presente (albra.seed)',
+  check('semilla ALBRA Seed presente (albra.seed)',
     byKey.has('albra.seed'));
   check('ScrapeCreators presente para investigación IG/TikTok',
     byKey.has('scrapecreators.research'));
