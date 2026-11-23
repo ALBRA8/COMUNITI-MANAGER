@@ -1,8 +1,10 @@
-// Test del canal TELEGRAM REAL (punto 5 de la misión de cierre): ejecutor con
-// Bot API contra un servidor MOCK de la Bot API (TELEGRAM_API_BASE apunta al
-// mock — solo válido en este entorno de pruebas), HITL real del flujo PUBLISH,
-// idempotencia, evidencia message_id, 429/403 honestos, pacing 1 msg/seg por
-// chat y techo de grupo (TELEGRAM_GROUP_PER_MINUTE solo puede bajar el techo).
+// Test del canal TELEGRAM REAL (punto 5 de la misión de cierre + punto 4 del
+// cierre final): ejecutor con Bot API contra un servidor MOCK de la Bot API
+// (TELEGRAM_API_BASE apunta al mock — solo válido en este entorno de pruebas),
+// HITL real del flujo PUBLISH, idempotencia, evidencia message_id, 429/403
+// honestos, pacing 1 msg/seg por chat, techo de grupo (TELEGRAM_GROUP_PER_MINUTE
+// solo puede bajar el techo), álbum sendMediaGroup (≤ 10, caption en la 1ª) y
+// reintento ÚNICO ante 429 respetando retry_after.
 // Uso (con env del panel: TELEGRAM_BOT_TOKEN + TELEGRAM_API_BASE del mock):
 //   TEST_BASE=http://localhost:3000 node scripts/test-telegram.cjs
 const http = require('http');
@@ -27,14 +29,19 @@ async function j(method, path, body) {
 }
 
 // ─── Mock de la Bot API: respuestas con la forma real de Telegram ──
-const calls = []; // {method, chat_id, text, photo, at}
+const calls = []; // {method, chat_id, text, photo, mediaCount, caption, at}
 let msgId = 100;
+const callCountByChat = new Map();
 const SCRIPT = new Map([
-  ['@canal_429', { body: { ok: false, error_code: 429, description: 'Too Many Requests: retry after 3', parameters: { retry_after: 3 } } }],
+  // @canal_429: SIEMPRE 429 → el ejecutor reintenta UNA vez y falla honesto.
+  ['@canal_429', { always429: true, retry_after: 3 }],
+  // @canal_429_una: 429 SOLO en la 1ª llamada → reintento único debe salir OK.
+  ['@canal_429_una', { once429: true, retry_after: 1 }],
   ['@canal_403', { body: { ok: false, error_code: 403, description: 'Forbidden: bot is not an administrator of the specified chat' } }],
 ]);
+const resp429 = (ra) => ({ ok: false, error_code: 429, description: `Too Many Requests: retry after ${ra}`, parameters: { retry_after: ra } });
 const mock = http.createServer((req, res) => {
-  const m = (req.url ?? '').match(/^\/bot[^/]+\/(sendMessage|sendPhoto)$/);
+  const m = (req.url ?? '').match(/^\/bot[^/]+\/(sendMessage|sendPhoto|sendMediaGroup)$/);
   if (req.method === 'POST' && m) {
     let raw = '';
     req.on('data', (c) => { raw += c; });
@@ -42,11 +49,25 @@ const mock = http.createServer((req, res) => {
       let body = {};
       try { body = JSON.parse(raw || '{}'); } catch { body = {}; }
       const chatId = String(body.chat_id ?? '');
-      calls.push({ method: m[1], chat_id: chatId, text: body.text ?? body.caption ?? '', photo: body.photo ?? '', at: Date.now() });
+      const n = (callCountByChat.get(chatId) ?? 0) + 1;
+      callCountByChat.set(chatId, n);
+      const albumCaption = Array.isArray(body.media) ? String(body.media[0]?.caption ?? '') : '';
+      calls.push({ method: m[1], chat_id: chatId, text: body.text ?? body.caption ?? '', photo: body.photo ?? '', mediaCount: Array.isArray(body.media) ? body.media.length : 0, caption: albumCaption, at: Date.now() });
       res.writeHead(200, { 'Content-Type': 'application/json' });
       const script = SCRIPT.get(chatId);
-      if (script) res.end(JSON.stringify(script.body));
-      else {
+      if (script?.always429) {
+        res.end(JSON.stringify(resp429(script.retry_after)));
+      } else if (script?.once429 && n === 1) {
+        res.end(JSON.stringify(resp429(script.retry_after)));
+      } else if (script?.body) {
+        res.end(JSON.stringify(script.body));
+      } else if (m[1] === 'sendMediaGroup') {
+        // Forma real de Telegram: result es un ARRAY de mensajes (uno por media).
+        const count = Array.isArray(body.media) ? body.media.length : 0;
+        const start = msgId + 1;
+        msgId += count;
+        res.end(JSON.stringify({ ok: true, result: Array.from({ length: count }, (_, i) => ({ message_id: start + i, chat: { id: -100987654321, username: 'canaldemo' }, date: Math.floor(Date.now() / 1000) })) }));
+      } else {
         msgId += 1;
         res.end(JSON.stringify({ ok: true, result: { message_id: msgId, chat: { id: -100987654321, username: 'canaldemo' }, date: Math.floor(Date.now() / 1000) } }));
       }
@@ -71,12 +92,13 @@ async function makeBrand(handle) {
   return r.data.id;
 }
 
-async function publishFlow(brandId, text, mediaUrl) {
+async function publishFlow(brandId, text, media) {
   const d = await j('POST', '/api/drafts', { brandId, objective: 'Prueba del canal Telegram', network: 'telegram', text });
   const draftId = d.data?.draft?.id ?? d.data?.id;
   if (!draftId) throw new Error('draft no creado: ' + JSON.stringify(d.data).slice(0, 150));
-  if (mediaUrl) {
-    await prisma.postVersion.updateMany({ where: { draftId, network: 'telegram' }, data: { mediaJson: JSON.stringify([{ url: mediaUrl }]) } });
+  if (media) {
+    const arr = (Array.isArray(media) ? media : [media]).map((url) => ({ url }));
+    await prisma.postVersion.updateMany({ where: { draftId, network: 'telegram' }, data: { mediaJson: JSON.stringify(arr) } });
   }
   // 1er resume: el ciclo llega a APPROVE y se detiene esperando HITL
   const r1 = await j('POST', '/api/orchestrator', { brandId, draftId, resume: true });
@@ -155,12 +177,38 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const pub2 = await pubOf(f2.draftId);
   check('media: sendPhoto con caption del texto aprobado', pub2?.status === 'PUBLISHED' && calls.some((c) => c.chat_id === '@canal_media' && c.method === 'sendPhoto' && c.photo === 'http://127.0.0.1:1/foto-demo.jpg' && c.text === 'Post con imagen adjunta'), JSON.stringify(pub2).slice(0, 140));
 
-  // 6) 429 → backoff honesto con retry_after
+  // 5b) CIERRE punto 4 — álbum: sendMediaGroup con varias imágenes (≤ 10)
+  const b2b = await makeBrand('@canal_album');
+  const f2b = await publishFlow(b2b, 'Post con álbum de 3 imágenes', ['http://127.0.0.1:1/f1.jpg', 'http://127.0.0.1:1/f2.jpg', 'http://127.0.0.1:1/f3.jpg']);
+  await approveAndPublish(b2b, f2b.draftId);
+  const pub2b = await pubOf(f2b.draftId);
+  const albumCalls = calls.filter((c) => c.chat_id === '@canal_album' && c.method === 'sendMediaGroup');
+  check('álbum: UNA llamada sendMediaGroup con 3 imágenes y caption en la 1ª', pub2b?.status === 'PUBLISHED' && albumCalls.length === 1 && albumCalls[0]?.mediaCount === 3 && albumCalls[0]?.caption === 'Post con álbum de 3 imágenes', JSON.stringify({ s: pub2b?.status, c: albumCalls.map((x) => ({ m: x.mediaCount, cap: x.caption })) }).slice(0, 200));
+  check('álbum: evidencia message_id del primer mensaje del grupo (t.me)', /^https:\/\/t\.me\/canaldemo\/\d+$/.test(pub2b?.externalId ?? ''), `externalId=${pub2b?.externalId ?? ''}`);
+
+  // 5c) CIERRE punto 4 — 11 imágenes: parada honesta ANTES de enviar (máx 10)
+  const b2c = await makeBrand('@canal_11img');
+  const f2c = await publishFlow(b2c, 'Álbum demasiado grande', Array.from({ length: 11 }, (_, i) => `http://127.0.0.1:1/g${i}.jpg`));
+  await approveAndPublish(b2c, f2c.draftId);
+  const pub2c = await pubOf(f2c.draftId);
+  check('11 imágenes → FAILED honesto (máximo 10) SIN llamada al mock', pub2c?.status === 'FAILED' && /máximo 10/.test(pub2c?.errorDetail ?? '') && !calls.some((c) => c.chat_id === '@canal_11img'), JSON.stringify({ s: pub2c?.status, e: (pub2c?.errorDetail ?? '').slice(0, 120) }).slice(0, 200));
+
+  // 6) 429 persistente → reintento único y fallo honesto con retry_after
   const b3 = await makeBrand('@canal_429');
   const f3 = await publishFlow(b3, 'Este chat dispara el 429 del mock');
   await approveAndPublish(b3, f3.draftId);
   const pub3 = await pubOf(f3.draftId);
-  check('429 → FAILED con retry_after explícito (backoff honesto)', pub3?.status === 'FAILED' && /429/.test(pub3?.errorDetail ?? '') && /retry_after 3/.test(pub3?.errorDetail ?? ''), JSON.stringify(pub3).slice(0, 180));
+  const tries429 = calls.filter((c) => c.chat_id === '@canal_429');
+  check('429 persistente → 2 intentos exactos y FAILED con retry_after explícito', pub3?.status === 'FAILED' && tries429.length === 2 && /429/.test(pub3?.errorDetail ?? '') && /retry_after 3/.test(pub3?.errorDetail ?? ''), JSON.stringify({ s: pub3?.status, n: tries429.length, e: (pub3?.errorDetail ?? '').slice(0, 140) }).slice(0, 220));
+
+  // 6b) CIERRE punto 4 — 429 una vez → reintento ÚNICO respetando retry_after → OK
+  const b7 = await makeBrand('@canal_429_una');
+  const f7 = await publishFlow(b7, 'Este chat recibe UN 429 y luego sale bien');
+  await approveAndPublish(b7, f7.draftId);
+  const pub7 = await pubOf(f7.draftId);
+  const triesUna = calls.filter((c) => c.chat_id === '@canal_429_una');
+  const gapUna = triesUna.length === 2 ? triesUna[1].at - triesUna[0].at : -1;
+  check('429 una vez → reintento único tras retry_after 1s y PUBLISHED', pub7?.status === 'PUBLISHED' && triesUna.length === 2 && gapUna >= 1000, JSON.stringify({ s: pub7?.status, n: triesUna.length, gap: gapUna }).slice(0, 180));
 
   // 7) 403 → fallo honesto
   const b4 = await makeBrand('@canal_403');

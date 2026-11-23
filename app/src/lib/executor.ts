@@ -311,18 +311,28 @@ async function seedAdapter<T>(contract: Contract, payload: Record<string, unknow
   }
 }
 
-// ─── Telegram: Bot API oficial (sendMessage/sendPhoto) ────────────
+// ─── Telegram: Bot API oficial (sendMessage/sendPhoto/sendMediaGroup) ──
 // Reglas: HITL heredado del flujo PUBLISH (aprobación humana verificada),
 // techos TELEGRAM_POST fijos en código, idempotencia por clave de contrato y
-// verificación del resultado (sin message_id no hay éxito; 429 → backoff
-// honesto con retry_after).
+// verificación del resultado (sin message_id no hay éxito).
+// CIERRE punto 4:
+// · Varias imágenes → sendMediaGroup (máximo OFICIAL 10 items; con más, parada
+//   honesta ANTES de enviar — nunca se trunca contenido aprobado).
+// · 429 → se espera retry_after (respetado, +250 ms de margen de reloj) y se
+//   reintenta UNA sola vez; un segundo 429 es fallo honesto con ambos intentos.
+
+type TelegramApiMessage = {
+  message_id?: number;
+  chat?: { id?: number; username?: string };
+  date?: number;
+};
 
 type TelegramApiResult = {
   ok?: boolean;
   error_code?: number;
   description?: string;
   parameters?: { retry_after?: number };
-  result?: { message_id?: number; chat?: { id?: number; username?: string }; date?: number };
+  result?: TelegramApiMessage | TelegramApiMessage[];
 };
 
 function telegramApiBase(): string {
@@ -413,26 +423,68 @@ async function telegramAdapter<T>(
     }
   };
 
-  const media = Array.isArray(payload.media) ? payload.media : [];
-  const firstMedia = media.length
-    ? String((media[0] as Record<string, unknown>)?.url ?? media[0] ?? '').trim()
-    : '';
+  const mediaUrls = (Array.isArray(payload.media) ? payload.media : [])
+    .map((m) => String((m as Record<string, unknown>)?.url ?? m ?? '').trim())
+    .filter(Boolean);
   // El caption de media admite 1024 chars: si el texto aprobado no cabe, el
   // texto va como mensaje y la foto aparte (NUNCA se trunca contenido aprobado).
   const captionFits = text.length <= 1024;
 
+  // CIERRE punto 4: 429 → espera retry_after (respetada, +250 ms de margen de
+  // reloj) y UN reintento; un segundo 429 es fallo honesto con ambos intentos.
+  let retryNote = '';
+  const callApiWith429 = async (
+    method: string,
+    body: Record<string, unknown>
+  ): Promise<{ status: number; data: TelegramApiResult }> => {
+    let res = await callApi(method, body);
+    const ra = res.data?.parameters?.retry_after;
+    const is429 = !res.data?.ok && (res.data?.error_code === 429 || res.status === 429);
+    if (is429 && Number.isFinite(ra) && (ra as number) > 0) {
+      if ((ra as number) > 60) {
+        return {
+          status: res.status,
+          data: {
+            ...res.data,
+            description: `retry_after ${ra}s supera el tope de espera honesto (60 s) — sin reintento`,
+          },
+        };
+      }
+      await new Promise((r) => setTimeout(r, (ra as number) * 1000 + 250));
+      retryNote = `429 → reintento único tras respetar retry_after ${ra}s`;
+      res = await callApi(method, body);
+    }
+    return res;
+  };
+
   let last: { status: number; data: TelegramApiResult };
   let partialNote = '';
   recordSend(chatId);
-  if (firstMedia && captionFits) {
-    last = await callApi('sendPhoto', { chat_id: chatId, photo: firstMedia, caption: text });
+  if (mediaUrls.length >= 2) {
+    // Álbum: sendMediaGroup admite máximo 10 items (límite OFICIAL de la Bot
+    // API). Con más, parada honesta ANTES de llamar a la API. La ventana local
+    // cuenta el álbum como 1 envío (1 llamada); el caption va en el 1er item.
+    if (mediaUrls.length > 10) {
+      return {
+        outcome: 'ERROR',
+        reason: `Telegram: sendMediaGroup admite máximo 10 imágenes (llegaron ${mediaUrls.length}) — no se trunca contenido aprobado; divide el post`,
+      } as ContractResult<T>;
+    }
+    const album = mediaUrls.map((url, i) => ({
+      type: 'photo',
+      media: url,
+      ...(i === 0 && captionFits ? { caption: text } : {}),
+    }));
+    last = await callApiWith429('sendMediaGroup', { chat_id: chatId, media: album });
+  } else if (mediaUrls.length === 1 && captionFits) {
+    last = await callApiWith429('sendPhoto', { chat_id: chatId, photo: mediaUrls[0], caption: text });
   } else {
-    last = await callApi('sendMessage', { chat_id: chatId, text });
-    if (last.data?.ok && firstMedia) {
+    last = await callApiWith429('sendMessage', { chat_id: chatId, text });
+    if (last.data?.ok && mediaUrls.length === 1) {
       const wait2 = chatPacingWaitMs(chatId);
       if (wait2 > 0) await new Promise((r) => setTimeout(r, Math.min(wait2, 2500)));
       recordSend(chatId);
-      const photo = await callApi('sendPhoto', { chat_id: chatId, photo: firstMedia });
+      const photo = await callApiWith429('sendPhoto', { chat_id: chatId, photo: mediaUrls[0] });
       if (!photo.data?.ok) {
         partialNote = ` (texto publicado; media falló: ${photo.data?.description ?? 'error'})`;
       } else {
@@ -446,11 +498,15 @@ async function telegramAdapter<T>(
     const retryAfter = last.data?.parameters?.retry_after;
     return {
       outcome: 'ERROR',
-      reason: `Telegram Bot API ${errCode}: ${last.data?.description ?? 'error'}${retryAfter ? ` — 429 backoff honesto: retry_after ${retryAfter}s` : ''}`,
+      reason: `Telegram Bot API ${errCode}: ${last.data?.description ?? 'error'}${retryAfter ? ` — 429 persistente tras reintento único (retry_after ${retryAfter}s respetado)` : ''}`,
     } as ContractResult<T>;
   }
 
-  const msg = last.data.result ?? {};
+  // sendMediaGroup responde un ARRAY de mensajes; sendMessage/sendPhoto uno.
+  const msgs: TelegramApiMessage[] = Array.isArray(last.data.result)
+    ? last.data.result
+    : [last.data.result ?? {}];
+  const msg = msgs[0] ?? {};
   const messageId = msg.message_id;
   if (!messageId) {
     return { outcome: 'ERROR', reason: 'Telegram respondió OK sin message_id: sin evidencia no hay éxito' } as ContractResult<T>;
@@ -460,7 +516,17 @@ async function telegramAdapter<T>(
   const okRes = {
     outcome: 'OK',
     data: { id: postUrl ?? `${chatRef}:${messageId}`, network: 'telegram', messageId, chat: chatRef, postUrl },
-    evidence: { source: 'telegram-bot-api', payload: { chat: chatRef, messageId, postUrl, date: msg.date ?? null, note: partialNote || undefined } },
+    evidence: {
+      source: 'telegram-bot-api',
+      payload: {
+        chat: chatRef,
+        messageId,
+        postUrl,
+        date: msg.date ?? null,
+        ...(msgs.length > 1 ? { albumCount: msgs.length } : {}),
+        note: [partialNote, retryNote].filter(Boolean).join('; ') || undefined,
+      },
+    },
   } as unknown as ContractResult<T>;
   tgSentByKey.set(key, { data: okRes, at: Date.now() });
   return okRes;
