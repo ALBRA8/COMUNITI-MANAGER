@@ -104,3 +104,55 @@ Ejecutado en esta sesión sobre el repo (commit de partida `dab00f8`, BD virgen)
 - Creación de `.env.example` de raíz (citado por README y PRODUCTION_READINESS, no existía).
 
 Veredicto de cierre: **PRODUCTION READY (software) revalidado con BD virgen** — las operaciones reales de publicación (credenciales por canal, worker FB, conector WhatsApp, proxy+tokens, rotación del token de GitHub expuesto) quedan documentadas como operación del operador en `DEPLOY.md`.
+
+---
+
+## Cierre final (2026-11-23) — CI verde en main y contratos de respuesta retirados
+
+> Esta sección NO modifica el histórico anterior: documenta la auditoría del
+> cierre final con evidencia ejecutada en la sesión y en CI.
+
+- **CI en verde por primera vez**: el workflow heredado (`ci.yml`) estaba ROJO
+  en todos los runs anteriores (incluida la base heredada `bf87831`). Causa
+  raíz, reproducida y corregida en esta sesión: en BD virgen el catálogo de
+  fuentes del motor se siembra de forma perezosa al primer uso y el bootstrap
+  de `test-meta-policy.cjs` lo consultaba ANTES (0 fuentes → sin verificación
+  real → `POLITICA_DESACTUALIZADA` → 3 fallos honestos + un
+  `PrismaClientValidationError` aguas abajo al seguir sin campaña). Fix
+  (`cbc876b`): el test siembra por la ruta real del panel
+  (`GET /api/meta-policy` → `ensurePolicySourcesSeeded`), verifica las 6
+  fuentes FACEBOOK_GROUPS contra meta.com (HTTP 200 reales, 1 reintento por
+  fuente) y guarda el flujo completo si el motor bloqueó. Probado localmente
+  con BD virgen recreada (bootstrap 6/6 HTTP 200; meta-policy 54/54) y luego
+  en GitHub Actions.
+- **Ejecución CI verde**: https://github.com/ALBRA8/COMUNITI-MANAGER/actions/runs/45090585164
+  (commit `cbc876b`, 2026-11-23T00:44:59Z, `success`). Números del log real:
+  `npm ci` con package-lock.json único (sin `bun.lock`) → prisma generate +
+  db push → tsc **0** → eslint **0** → build standalone OK → contratos honestos
+  **14 herramientas + 14 agentes** → P2 **26/26**, E2E **25/25**, joins
+  **24/24**, media **11/11**, mejoras **25/25**, P8-P12 **24/24**, meta-policy
+  **54/54**, integraciones **27/27**, Telegram **20/20**, WhatsApp **18/18**,
+  Postiz **9/9**, besttime **10/10** → **273/273 checks + COLA LIMPIA**.
+- **Puntos del cierre** (un commit por punto, push + `git ls-remote` verificado):
+  (1) `424279f` — reply_to_comment/reply_to_message/fetch_messages retirados de
+  contracts/agents/registry y superficie agéntica (misión = publicar;
+  fetch_comments solo lectura de investigación vía ruta oficial verificada);
+  moderate_item y record_experiment también retirados por carecer de ejecutor
+  en cualquier proveedor activo; `verify-contratos.cjs` ampliado: FALLA si un
+  permiso de agente no tiene ejecutor en ningún proveedor activo. (2)
+  `0b829b4` — "chaleco" eliminado de docs/código vivos (IP-DEL-CHALECO →
+  IP-DEL-PANEL incluido) y AGENTE-GENERAL reducido a UNA mención en la capa
+  opcional del ecosistema. (3) `0cc2e4e` — gestor único: `app/bun.lock`
+  eliminado, queda `package-lock.json` (npm). (4) `e708f10` — Telegram
+  sendMediaGroup (≤ 10, parada honesta con más; caption del texto aprobado en
+  la 1ª imagen) + reintento ÚNICO ante 429 respetando retry_after; batería
+  Telegram 16 → 20 checks contra el mock. (5) `5f2a9f8` —
+  `scripts/smoke-real.cjs` + DEPLOY.md §13: prueba de humo guiada con HITL real
+  (el operador aprueba en el panel), evidencia en `smoke-real-evidence.json` y,
+  sin credenciales, `AWAITING_CREDENTIALS` por canal con exit 0 (verificado en
+  esta sesión). (6) esta actualización de PRODUCTION_READINESS y AUDIT_REPORT
+  con los números de la ejecución CI enlazada.
+- Veredicto: **PRODUCTION READY (software) — CI verde en main, contratos
+  honestos por herramienta y por agente**. La publicación real con credenciales
+  del operador (revocación del token de GitHub expuesto incluida) sigue siendo
+  operación documentada en `DEPLOY.md` (§1-§13).

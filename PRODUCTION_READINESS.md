@@ -1,11 +1,55 @@
 # PRODUCTION READINESS — COMUNITI-MANAGER (agente independiente de redes sociales)
 
-Veredicto: **LISTO PARA PRODUCCIÓN (software)** — revalidado el **2026-11-21**
-en la sesión de cierre (Fase 0, línea base real ejecutada en esta sesión sobre
-el repo entregado, BD virgen). Estado del repo: main = origin/main (push
-verificado con `git ls-remote` en cada commit). Histórico de auditorías
-previas: ver `AUDIT_REPORT.md` (9 ciclos, 2026-11-06) — las cifras de abajo son
-las de HOY, no heredadas.
+Veredicto: **LISTO PARA PRODUCCIÓN (software)** — revalidado el **2026-11-23**
+en el cierre final con **CI verde en main** (ejecución real enlazada abajo) y
+línea base ejecutada de nuevo en esta sesión sobre el repo entregado (BD
+virgen). Estado del repo: main = origin/main (push verificado con
+`git ls-remote` en cada commit). Histórico: revalidación 2026-11-21 (más abajo)
+y auditorías previas en `AUDIT_REPORT.md` (9 ciclos, 2026-11-06) — las cifras
+de cada sección son las de SU fecha, no heredadas.
+
+## Revalidación del cierre final (2026-11-23) — CI VERDE en main
+
+**Ejecución CI**: https://github.com/ALBRA8/COMUNITI-MANAGER/actions/runs/45090585164
+(commit `cbc876b`, Node 24, ubuntu-latest, 2026-11-23T00:44:59Z — resultado
+`success`; los commits siguientes del mismo cierre disparan su propia corrida
+del mismo workflow). Pasos verificados por el CI: `npm ci` (package-lock.json
+único, `bun.lock` eliminado) → prisma generate + db push (BD virgen) →
+`tsc --noEmit` 0 errores → `eslint` 0 → `build` standalone OK → contratos
+honestos → baterías → cola-check.
+
+Números de ESA ejecución (extraídos del log real del run):
+
+| Suite | Checks | Resultado |
+|---|---|---|
+| Contratos honestos (verify-contratos) | 14 tools + 14 agentes | ✅ todo contrato y todo permiso con ejecutor |
+| P2 aprobación (gate HITL) | 26 | ✅ 26/26 |
+| E2E FB-GROUPS | 25 | ✅ 25/25 |
+| Joins | 24 | ✅ 24/24 |
+| Media | 11 | ✅ 11/11 |
+| Mejoras | 25 | ✅ 25/25 |
+| P8-P12 | 24 | ✅ 24/24 |
+| Meta Policy Intelligence | 54 | ✅ 54/54 |
+| Integraciones | 27 | ✅ 27/27 |
+| Telegram (Bot API contra mock; sendMediaGroup + 429) | 20 | ✅ 20/20 |
+| WhatsApp (conector contra mock, entrega firmada) | 18 | ✅ 18/18 |
+| Postiz (API pública contra mock) | 9 | ✅ 9/9 |
+| Besttime (Node ≥ 24) | 10 | ✅ 10/10 |
+| Cola | — | ✅ COLA LIMPIA (0 jobs vivos) |
+| **Total** | **273** | **✅ 273/273 + COLA LIMPIA** |
+
+Cierre ejecutado en esta sesión (un commit por punto, push + `git ls-remote`
+verificado en cada uno): punto 1 contratos de respuesta retirados (misión =
+publicar; `fetch_comments` solo lectura de investigación) + verificador
+ampliado por agente (`424279f`); punto 2 vocabulario — "chaleco" fuera,
+AGENTE-GENERAL a una sola mención en la capa opcional (`0b829b4`); punto 3
+gestor único npm sin `bun.lock` (`0cc2e4e`); punto 4 Telegram sendMediaGroup
+≤10 + reintento único ante 429 con retry_after (`e708f10`); punto 5
+`scripts/smoke-real.cjs` + DEPLOY.md §13, sin credenciales →
+`AWAITING_CREDENTIALS` por canal y exit 0 (`5f2a9f8`). Fix de CI incluido:
+el bootstrap de meta-policy siembra el catálogo por la ruta real del panel y
+verifica las 6 fuentes FACEBOOK_GROUPS contra meta.com en BD virgen
+(`cbc876b` — causa raíz de que el CI heredado nunca llegó a verde).
 
 ## Checklist final (revalidación 2026-11-21)
 

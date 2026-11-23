@@ -549,3 +549,21 @@ Work Log:
 
 Stage Summary:
 - El agente publica DE VERDAD por sus canales propios (Telegram Bot API, WhatsApp QR propio, grupos FB con worker, IG/FB vía Postiz) con HITL, techos por red, evidencia firmada y el motor de 6 estados gobernando todo lo Meta. Pendiente del operador: credenciales reales, worker FB, conector WhatsApp en su PC/VPS y revocar el token de GitHub expuesto.
+
+## [2026-11-23] Task ID: 31-cierre-final-6-puntos
+
+Agent: agente principal (Z.ai)
+Task: "CIERRE FINAL de COMUNITI-MANAGER... 6 puntos... un commit por punto con push verificado (git ls-remote), y evidencia ejecutada en esta sesión"
+
+Work Log:
+- Partida real: origin/main = bf87831 (misión anterior completa, CI heredado). npm ci + prisma + BD virgen + baterías locales 269/269 reproducidas antes de tocar nada.
+- Punto 1 (424279f): misión = publicar → fuera reply_to_comment/reply_to_message/fetch_messages de contracts/agents/registry; fetch_comments SOLO lectura de investigación (ScrapeCreators, ruta oficial); moderate_item y record_experiment fuera por sin ejecutor; verify-contratos ampliado con regla por agente (14 tools + 14 agentes, 0 huérfanos). Estándar 216/216 + cola limpia.
+- Punto 2 (0b829b4): chaleco fuera de docs/código vivos (IP-DEL-CHALECO→IP-DEL-PANEL; FB_GROUPS_REFERENTES, destripes); AGENTE-GENERAL a UNA mención (capa opcional especializacion-albra). 31 reglas exactas aplicadas por script con conteo; worklog/CHANGELOG históricos intactos.
+- Punto 3 (0cc2e4e): fuera app/bun.lock; npm único con package-lock.json; referencias bun limpiadas en docs vivos; besttime 10/10 con Node puro.
+- Punto 4 (e708f10): Telegram sendMediaGroup (≤10, parada honesta con más, caption del texto aprobado en la 1ª) + reintento ÚNICO ante 429 respetando retry_after (+250 ms); mock ampliado; Telegram 20/20, whatsapp 18/18, postiz 9/9, tsc 0, lint 0.
+- CI-01 (cbc876b): causa raíz del CI heredado SIEMPRE rojo (BD virgen: catálogo sembrado perezosamente, bootstrap lo consultaba antes → 3 fallos + PrismaClientValidationError). Fix honesto: siembra por GET /api/meta-policy + verificación real de 6 fuentes (HTTP 200) con 1 reintento + guard del flujo completo. Probado con BD virgen: 216/216.
+- Punto 5 (5f2a9f8): scripts/smoke-real.cjs + DEPLOY.md §13 — prueba de humo guiada con HITL real (nunca auto-aprueba), evidencia en smoke-real-evidence.json; sin credenciales → AWAITING_CREDENTIALS por canal con exit 0 (verificado: EXIT=0; y AWAITING_TARGET con canal conectado sin destino).
+- Punto 6 (este commit): PRODUCTION_READINESS y AUDIT_REPORT con los números de la ejecución CI VERDE 45090585164 (cbc876b: 273/273 + COLA LIMPIA + contratos honestos 14+14) y el enlace a la ejecución.
+
+Stage Summary:
+- CI verde en main por primera vez; contratos honestos por herramienta Y por agente; Telegram publica álbumes y respeta 429; prueba de humo guiada lista para el operador. Pendiente del operador: credenciales reales por canal, aprueba la prueba de humo en el panel y rota el token de GitHub expuesto (DEPLOY.md §10/§13).
