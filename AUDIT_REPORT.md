@@ -60,7 +60,7 @@ Healthcheck, corte nocturno real, idempotencia de reportes, telemetría honesta 
 - tsc --noEmit: 0 errores (con ignoreBuildErrors:false — el build ya no oculta nada).
 - eslint: 0 errores. Build de producción: OK.
 - Cola: limpia (0 campañas con jobs vivos) tras cada ronda; higiene de tests con restauración de estado global.
-- Smoke de producción: `bun .next/standalone/server.js` → /api/health {ok:true, db:"ok", scheduler activo}, panel 200, /llms.txt 200, informe inexistente 404.
+- Smoke de producción: `node .next/standalone/server.js` → /api/health {ok:true, db:"ok", scheduler activo}, panel 200, /llms.txt 200, informe inexistente 404.
 - Nuevos checks añadidos a la regresión: idempotencia de reportes duplicados (E2E), limpieza del arnés E2E, contrato alsoCovers del panel (meta-policy).
 
 ## 10. Vulnerabilidades detectadas y resueltas

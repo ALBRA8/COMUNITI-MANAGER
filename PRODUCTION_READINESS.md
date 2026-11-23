@@ -57,7 +57,7 @@ el commit del punto 10): runner portable real (`run-with-server.sh` ejecuta los
 tests desde la raíz y el server desde `app/`), cargador `scripts/lib/app-prisma.cjs`
 (los scripts de la raíz usaban por resolución de Node el cliente Prisma de un
 directorio padre y escribían en OTRA base de datos), import de `test-besttime.ts`
-dual-layout (Node/bun) y bootstrap honesto de fuentes en `test-meta-policy.cjs`
+dual-layout (raíz/app) y bootstrap honesto de fuentes en `test-meta-policy.cjs`
 (verificación REAL contra meta.com, sin fingir frescura).
 
 ## Requisitos de despliegue (operación del operador)

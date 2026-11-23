@@ -48,7 +48,7 @@ npx tsc --noEmit && npm run lint   # en app/
   ejecuta las baterías desde la raíz; `scripts/lib/app-prisma.cjs` garantiza que
   los scripts que usan Prisma directo escriban en la BD de la app (no en la de
   un directorio padre).
-- `test-besttime.ts` corre con Node ≥ 24 (type stripping) o bun; su import
+- `test-besttime.ts` corre con Node ≥ 24 (type stripping); su import
   resuelve la lib en ambos layouts (`../src` o `../app/src`).
 - `test-meta-policy.cjs` bootstrapa la frescura de las fuentes FACEBOOK_GROUPS
   con verificaciones REALES (nunca finge frescura); en una red sin salida a

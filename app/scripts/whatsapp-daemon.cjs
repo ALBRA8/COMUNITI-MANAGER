@@ -37,7 +37,7 @@ let baileys;
 try {
   baileys = require('@whiskeysockets/baileys');
 } catch (e) {
-  console.error('[wa-daemon] Falta @whiskeysockets/baileys. Instálalo con: bun add @whiskeysockets/baileys qrcode');
+  console.error('[wa-daemon] Falta @whiskeysockets/baileys. Instálalo con: npm install @whiskeysockets/baileys qrcode');
   process.exit(1);
 }
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = baileys;

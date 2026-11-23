@@ -226,7 +226,7 @@ exacto; un POSTED sin URL se degrada a FAILED por honestidad).
   exponer secretos ni baseUrl; crear campañas sigue pasando por POST + gauge + HITL);
   **P12** biblioteca de media por marca (modelo FbMedia, API /api/fb-media con la
   misma validación que los adjuntos, chips clicables en el formulario de campañas).
-  Tests: scripts/test-besttime.ts (bun, 10/10), scripts/test-p8-p12.cjs (24/24),
+  Tests: scripts/test-besttime.ts (Node ≥ 24, 10/10), scripts/test-p8-p12.cjs (24/24),
   regresiones P7 25/25, P1 11/11, P6 24/24, verificación en navegador con capturas.
   *(hecho)*
 - **P2-APPROVED** Gate pre-vuelo explícito (destripe Metricool §7, "aprobación

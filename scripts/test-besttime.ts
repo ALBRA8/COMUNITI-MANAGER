@@ -1,4 +1,4 @@
-// Test unitario de la lib pura de mejores horas (P10) — corre con Node ≥24 o bun:
+// Test unitario de la lib pura de mejores horas (P10) — corre con Node ≥24 (type stripping, sin gestor externo):
 //   node scripts/test-besttime.ts   (desde la raíz del repo o del workspace)
 // Cubre: conteo por celda, tasa, sugerencias con muestra mínima, honestidad
 // de datos insuficientes y el corte de horas fuera de 6..21.
