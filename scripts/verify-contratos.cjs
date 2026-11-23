@@ -9,6 +9,9 @@
  * Método: parsea registry.ts (keys + contracts declarados) y los compara con
  * el mapa de ejecutores implementados en executor.ts (switch dispatchTool +
  * adapters). También exige que las rutas citadas existan en ROUTES.
+ * CIERRE punto 1: además FALLA si un contrato permitido a un agente
+ * (allowedContracts en agents.ts) no tiene ejecutor en ningún proveedor
+ * activo — un permiso sin ejecutor es un permiso decorativo.
  * Uso: node scripts/verify-contratos.cjs   (desde la raíz del repo)
  * Salida: exit 0 si no hay contratos huérfanos; exit 1 y lista si los hay.
  */
@@ -60,7 +63,7 @@ const ADAPTER_CONTRACTS = {
   'telegram.bot': ['get_connection_status', 'publish_post'],
   'whatsapp.session': ['get_connection_status', 'publish_post'],
   'chismoso.listening': ['research_topic'],
-  'crm.conversation': ['fetch_messages', 'reply_to_message', 'create_lead', 'get_connection_status'],
+  'crm.conversation': ['create_lead'], // CIERRE punto 1: fuera fetch_messages/reply_to_message (misión = publicar; sin ruta verificada)
   'krea.creativity': ['generate_creative_brief', 'publish_post'],
   'ytauto.video': ['generate_creative_brief', 'publish_post'],
   'nexscope.research': ['research_topic', 'analyze_competitor'],
@@ -95,10 +98,31 @@ for (const key of declared.keys()) {
   }
 }
 
+// 5) Regla por agente (CIERRE punto 1): todo contrato permitido a un agente
+//    (allowedContracts en agents.ts) debe estar declarado por alguna
+//    herramienta activa del registro Y tener ejecutor en su adaptador.
+//    Ejemplo del corte: el agente community quedó solo con fetch_comments
+//    (lectura de investigación); responder comentarios/mensajes ya no es un
+//    permiso de ningún agente porque ningún proveedor activo lo ejecuta.
+const agentsSrc = fs.readFileSync(path.join(app, 'src', 'lib', 'agents.ts'), 'utf8');
+const agentRe = /key:\s*'([a-z_]+)'[\s\S]*?allowedContracts:\s*\[([^\]]*)\]/g;
+let agentCount = 0;
+while ((m = agentRe.exec(agentsSrc)) !== null) {
+  agentCount += 1;
+  const agentKey = m[1];
+  const allowed = [...m[2].matchAll(/'([^']+)'/g)].map((c) => c[1]);
+  for (const c of allowed) {
+    const covered = [...declared.entries()].some(
+      ([toolKey, cs]) => cs.has(c) && (implemented.get(toolKey)?.has(c) ?? false)
+    );
+    if (!covered) orphans.push(`agente '${agentKey}': puede '${c}' pero ningún proveedor activo lo declara con ejecutor`);
+  }
+}
+
 if (orphans.length) {
   console.log('CONTRATOS HUÉRFANOS DETECTADOS:');
   for (const o of orphans) console.log('  ✗ ' + o);
   process.exit(1);
 }
-console.log(`CONTRATOS HONESTOS — ${declared.size} herramientas revisadas: todo contrato declarado tiene ejecutor real.`);
+console.log(`CONTRATOS HONESTOS — ${declared.size} herramientas y ${agentCount} agentes revisados: todo contrato declarado y todo permiso de agente tiene ejecutor real.`);
 process.exit(0);

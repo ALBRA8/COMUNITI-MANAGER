@@ -1,4 +1,12 @@
 // Contratos normalizados del arnés (PRD §6) y tipos globales.
+// CIERRE punto 1 (decisión con evidencia): la misión de este agente es
+// PUBLICAR, no conversar — ningún proveedor activo tiene ejecutor de
+// respuesta, y el CRM es otro agente del ecosistema. Se RETIRARON del
+// vocabulario: reply_to_comment, reply_to_message, fetch_messages (sin
+// ejecutor y fuera de misión) y moderate_item/record_experiment (contratos
+// declarados a un agente sin ejecutor en ningún proveedor activo).
+// fetch_comments queda SOLO como lectura de investigación (ScrapeCreators,
+// ruta oficial verificada GET /v2/instagram/post/comments — nunca respuestas).
 
 export const CONTRACTS = [
   'get_capabilities',
@@ -6,7 +14,6 @@ export const CONTRACTS = [
   'list_accounts',
   'fetch_metrics',
   'fetch_comments',
-  'fetch_messages',
   'research_topic',
   'analyze_competitor',
   'create_content_draft',
@@ -16,11 +23,7 @@ export const CONTRACTS = [
   'schedule_post',
   'publish_post',
   'verify_publication',
-  'reply_to_comment',
-  'reply_to_message',
-  'moderate_item',
   'create_lead',
-  'record_experiment',
   'generate_performance_report',
   'fb_groups_post',
   'fb_groups_sync',
@@ -112,9 +115,6 @@ export function requiresApproval(mode: AutonomyMode, risk: RiskLevel): boolean {
 export function riskOfAction(contract: Contract): RiskLevel {
   switch (contract) {
     case 'publish_post':
-    case 'reply_to_comment':
-    case 'reply_to_message':
-    case 'moderate_item':
       return 'HIGH';
     case 'schedule_post':
       return 'MEDIUM';

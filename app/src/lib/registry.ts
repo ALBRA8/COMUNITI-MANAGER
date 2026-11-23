@@ -102,10 +102,10 @@ export const TOOLS: ToolDefinition[] = [
     key: 'crm.conversation',
     provider: 'CRM-ALBRA (ecosistema ALBRA)',
     category: 'ECOSYSTEM',
-    description: 'CRM multi-tenant con inbox multi-canal y handoff humano. Mundo aparte (otro agente del ecosistema): este agente lo consume solo si lo activas, vía /api/crm/actions y MCP.',
-    contracts: ['fetch_messages', 'reply_to_message', 'create_lead'],
+    description: 'CRM multi-tenant con inbox multi-canal y handoff humano. Mundo aparte (otro agente del ecosistema): este agente solo le registra leads si lo activas. Leer mensajes y responder NO son contratos de este agente — su misión es publicar (CIERRE punto 1).',
+    contracts: ['create_lead'],
     envKeys: ['CRM_ALBRA_URL', 'CRM_ALBRA_API_KEY'],
-    capabilities: ['inbox', 'conversacion', 'crm', 'memorydv'],
+    capabilities: ['crm', 'memorydv', 'registro-de-leads'],
   },
   {
     key: 'krea.creativity',
